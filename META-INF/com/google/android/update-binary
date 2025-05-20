@@ -1,0 +1,13 @@
+#!/sbin/sh
+
+UMOD_TMPDIR=/dev/tmp
+rm -rf $UMOD_TMPDIR 2>/dev/null
+mkdir -p $UMOD_TMPDIR
+
+unzip -o "$3" 'META-INF/com/google/android/*' -d $UMOD_TMPDIR >&2
+
+[ ! -f $UMOD_TMPDIR/updater-script ] && exit 1
+
+. $UMOD_TMPDIR/updater-script
+
+exit 0

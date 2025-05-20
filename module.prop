@@ -1,0 +1,7 @@
+id=custom_font
+name=自定义字体模块
+version=v1.0
+versionCode=1
+author=lucky-cry
+description=一个用于替换系统字体的Magisk模块
+updateJson=https://raw.githubusercontent.com/lucky-cry/magisk-modules/font-module/update.json
