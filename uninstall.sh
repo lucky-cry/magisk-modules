@@ -1,5 +1,4 @@
-#!/system/bin/sh
-# 这个脚本将在模块卸载时执行
-
-# 字体模块通常不需要特殊的卸载操作
-# Magisk会自动处理文件的恢复
+start_alipay_dir="/data/media/0/Android/start_alipay"
+if [ -d $start_alipay_dir ]; then
+  rm -rf $start_alipay_dir
+fi

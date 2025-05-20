@@ -1,0 +1,5 @@
+#勿扰名单里的应用在前台时，不会启动支付宝(勿扰)，例如 com.tencent.tmgp.sgame
+com.tencent.tmgp.sgame
+com.tencent.jkchess
+com.eg.android.AlipayGphone
+com.netease.party

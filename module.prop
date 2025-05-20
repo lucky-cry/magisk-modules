@@ -1,7 +1,7 @@
-id=custom_font
-name=自定义字体模块
-version=v1.0
-versionCode=1
-author=lucky-cry
-description=一个用于替换系统字体的Magisk模块
-updateJson=https://raw.githubusercontent.com/lucky-cry/magisk-modules/font-module/update.json
+id=crond_start_alipay
+name=循环启动支付宝
+version=v1.0.4
+versionCode=4
+author=Kotch，你遗憾過吧(懒猫自用)
+description=循环启动支付宝，配合支付宝插件使用，配置文件路径:/Android/start_alipay
+updateJson=https://raw.githubusercontent.com/lucky-cry/magisk-modules/crond_start_alipay/update.json
