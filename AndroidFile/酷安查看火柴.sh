@@ -1,0 +1,1 @@
+am start -d "coolmarket://u/3712243"
