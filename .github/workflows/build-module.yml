@@ -13,6 +13,10 @@ on:
       - 'service.sh'
       - 'post-fs-data.sh'
       - 'uninstall.sh'
+  release:
+    types: [published, created, edited]
+    branches:
+      - '*'
   workflow_dispatch:
 
 jobs:
@@ -87,3 +91,87 @@ jobs:
           git add update.json
           git commit -m "Update module to v${MODULE_VERSION} (${MODULE_VERSIONCODE})"
           git push origin HEAD:${BRANCH_NAME}
+
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Configure Git
+        env:
+          GITEE_USER: lucky__cat
+        run: |
+          git config --global user.name "${GITEE_USER}"
+          git config --global user.email "${GITEE_USER}@users.noreply.github.com"
+
+      - name: Fetch all branches and tags
+        run: |
+          git remote set-branches origin '*'
+          git fetch origin --tags
+          echo "Current branches:"
+          git branch -a
+
+      - name: Push to Gitee
+        env:
+          GITEE_USER: lucky__cat
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+        run: |
+          # 添加 Gitee remote
+          git remote add gitee https://${GITEE_USER}:${GITEE_TOKEN}@gitee.com/${GITEE_USER}/magisk-modules.git
+          
+          # 推送所有分支到 Gitee
+          git branch -r | grep -v '\->' | while read remote; do
+              branch="${remote#origin/}"
+              git branch --track "${branch}" "$remote" 2>/dev/null || true
+              git push gitee "${branch}" --force
+          done
+          
+          # 推送所有标签
+          git push gitee --tags --force
+          
+          echo "Push completed"
+
+      - name: Sync Releases to Gitee
+        if: github.event_name == 'release'
+        env:
+          GITEE_USER: lucky__cat
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+        run: |
+          # 获取最新发行版信息
+          RELEASE_TAG="${{ github.event.release.tag_name }}"
+          RELEASE_NAME="${{ github.event.release.name }}"
+          RELEASE_BODY="${{ github.event.release.body }}"
+          
+          # 下载发行版附件
+          mkdir -p release_assets
+          cd release_assets
+          for asset_url in $(echo "${{ toJson(github.event.release.assets) }}" | jq -r '.[].browser_download_url'); do
+            wget $asset_url
+          done
+          
+          # 使用 Gitee API 创建发行版
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            -H "Authorization: token $GITEE_TOKEN" \
+            "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases" \
+            -d '{
+              "tag_name": "'"${RELEASE_TAG}"'",
+              "name": "'"${RELEASE_NAME}"'",
+              "body": "'"${RELEASE_BODY}"'",
+              "prerelease": false
+            }'
+          
+          # 上传发行版附件
+          for file in *; do
+            if [ -f "$file" ]; then
+              curl -X POST \
+                -H "Authorization: token $GITEE_TOKEN" \
+                -F "access_token=$GITEE_TOKEN" \
+                -F "file=@$file" \
+                "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases/${RELEASE_TAG}/attach_files"
+            fi
+          done
