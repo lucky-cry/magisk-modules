@@ -1,4 +1,4 @@
-name: Build Magisk Module
+name: GitHub Release
 
 on:
   push:
@@ -36,7 +36,7 @@ jobs:
         run: |
           REPO_NAME=${{ steps.module_info.outputs.repo_name }}
           BRANCH_NAME=${{ steps.module_info.outputs.branch_name }}
-          sed -i "s|updateJson=.*|updateJson=https://gitee.com/lucky__cat/magisk-modules/raw/Hcfile_sharing/update.json|g" Source/module.prop
+          sed -i "s|updateJson=.*|updateJson=https://raw.githubusercontent.com/${REPO_NAME}/${BRANCH_NAME}/update.json|g" Source/module.prop
 
       - name: Build module zip
         id: build
@@ -65,7 +65,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Update update.json
+      - name: Update update.json for GitHub
         run: |
           MODULE_VERSION=${{ steps.module_info.outputs.module_version }}
           MODULE_VERSIONCODE=${{ steps.module_info.outputs.module_versioncode }}
@@ -73,13 +73,13 @@ jobs:
           BRANCH_NAME=${{ steps.module_info.outputs.branch_name }}
           ZIP_NAME=${{ steps.build.outputs.zip_name }}
           # 生成 changelog 字段为 changelog 文件的 raw 链接
-          CHANGELOG_URL="https://gitee.com/lucky__cat/magisk-modules/raw/Hcfile_sharing/changelog"
+          CHANGELOG_URL="https://raw.githubusercontent.com/${REPO_NAME}/${BRANCH_NAME}/changelog"
           # Create or update update.json
           cat > update.json << EOF
           {
             "version": "${MODULE_VERSION}",
             "versionCode": ${MODULE_VERSIONCODE},
-            "zipUrl": "https://gitee.com/lucky__cat/magisk-modules/releases/download/v${MODULE_VERSION}/${ZIP_NAME}",
+            "zipUrl": "https://github.com/${REPO_NAME}/releases/download/v${MODULE_VERSION}/${ZIP_NAME}",
             "changelog": "${CHANGELOG_URL}"
           }
           EOF
@@ -88,3 +88,9 @@ jobs:
           git add update.json Source/module.prop
           git commit -m "Update module to v${MODULE_VERSION} (${MODULE_VERSIONCODE})"
           git push origin ${BRANCH_NAME}
+
+      - name: Trigger Gitee sync workflow
+        uses: peter-evans/repository-dispatch@v2
+        with:
+          event-type: sync-to-gitee
+          client-payload: '{"version": "${{ steps.module_info.outputs.module_version }}", "versionCode": "${{ steps.module_info.outputs.module_versioncode }}", "zipName": "${{ steps.build.outputs.zip_name }}"}'

@@ -1,0 +1,79 @@
+name: Sync to Gitee
+
+on:
+  repository_dispatch:
+    types: [sync-to-gitee]
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Download release asset
+        run: |
+          VERSION="${{ github.event.client_payload.version }}"
+          ZIP_NAME="${{ github.event.client_payload.zipName }}"
+          wget "https://github.com/${{ github.repository }}/releases/download/v${VERSION}/${ZIP_NAME}" -O "${ZIP_NAME}"
+
+      - name: Login to Gitee
+        uses: yanglbme/gitee-pages-action@main
+        with:
+          gitee-username: ${{ secrets.GITEE_USERNAME }}
+          gitee-password: ${{ secrets.GITEE_PASSWORD }}
+          gitee-repo: lucky__cat/magisk-modules
+          branch: Hcfile_sharing
+
+      - name: Create Gitee Release
+        run: |
+          VERSION="${{ github.event.client_payload.version }}"
+          VERSIONCODE="${{ github.event.client_payload.versionCode }}"
+          ZIP_NAME="${{ github.event.client_payload.zipName }}"
+          
+          # 使用 Gitee API 创建发布
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            -u "${{ secrets.GITEE_USERNAME }}:${{ secrets.GITEE_PASSWORD }}" \
+            "https://gitee.com/api/v5/repos/lucky__cat/magisk-modules/releases" \
+            -d '{
+              "tag_name": "v'"${VERSION}"'",
+              "name": "Release v'"${VERSION}"'",
+              "prerelease": false,
+              "description": "请查看 changelog 文件获取更新内容"
+            }'
+          
+          # 上传发布文件
+          curl -X POST \
+            -H "Content-Type: multipart/form-data" \
+            -u "${{ secrets.GITEE_USERNAME }}:${{ secrets.GITEE_PASSWORD }}" \
+            -F "access_token=${{ secrets.GITEE_ACCESS_TOKEN }}" \
+            -F "file=@${ZIP_NAME}" \
+            "https://gitee.com/api/v5/repos/lucky__cat/magisk-modules/releases/v${VERSION}/attach_files"
+
+      - name: Update Gitee update.json
+        run: |
+          VERSION="${{ github.event.client_payload.version }}"
+          VERSIONCODE="${{ github.event.client_payload.versionCode }}"
+          ZIP_NAME="${{ github.event.client_payload.zipName }}"
+          
+          # Create or update update.json for Gitee
+          cat > update.json << EOF
+          {
+            "version": "${VERSION}",
+            "versionCode": ${VERSIONCODE},
+            "zipUrl": "https://gitee.com/lucky__cat/magisk-modules/releases/download/v${VERSION}/${ZIP_NAME}",
+            "changelog": "https://gitee.com/lucky__cat/magisk-modules/raw/Hcfile_sharing/changelog"
+          }
+          EOF
+          
+          # Configure git
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          
+          # Commit and push changes
+          git add update.json
+          git commit -m "Update module to v${VERSION} (${VERSIONCODE}) on Gitee"
+          
+          # Push to Gitee using credentials
+          git push "https://${{ secrets.GITEE_USERNAME }}:${{ secrets.GITEE_PASSWORD }}@gitee.com/lucky__cat/magisk-modules.git" HEAD:Hcfile_sharing 
