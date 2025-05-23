@@ -1,6 +1,6 @@
 {
-  "version": "2.6.2",
-  "versionCode": 2025052302,
-  "zipUrl": "https://github.com/lucky-cry/magisk-modules/releases/download/v2.6.2/Hcfile_sharing-2.6.2.zip",
-  "changelog": "https://github.com/lucky-cry/magisk-modules/releases/tag/v2.6.2"
+  "version": "2.6.3",
+  "versionCode": 2025052303,
+  "zipUrl": "https://github.com/lucky-cry/magisk-modules/releases/download/v2.6.3/Hcfile_sharing-2.6.3.zip",
+  "changelog": "v2.6.3 (2025-05-23)\n- 新增：支持多分支独立自动检测和自动打包\n- 优化：模块结构与打包流程，兼容 Magisk 最新版本\n- 修复：部分设备挂载目录失败的问题\n- 其他：完善模块说明文档"
 }
