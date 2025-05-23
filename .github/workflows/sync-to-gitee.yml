@@ -17,5 +17,4 @@ jobs:
           dst: gitee/lucky__cat/magisk-modules
           dst_token: ${{ secrets.GITEE_TOKEN }}
           force_update: true
-          debug: true
-          account_type: user 
+          debug: true 
