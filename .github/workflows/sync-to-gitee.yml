@@ -76,12 +76,28 @@ jobs:
             mkdir -p "release_assets_${RELEASE_TAG}"
             cd "release_assets_${RELEASE_TAG}"
             
-            echo "$release" | jq -r '.assets[].browser_download_url' | while read -r asset_url; do
-              if [ ! -z "$asset_url" ]; then
-                echo "Downloading: $asset_url"
-                wget "$asset_url"
+            # 获取所有资产的下载 URL
+            assets_urls=$(echo "$release" | jq -r '.assets[].browser_download_url')
+            assets_names=$(echo "$release" | jq -r '.assets[].name')
+            
+            # 如果没有资产，尝试获取源代码压缩包
+            if [ -z "$assets_urls" ]; then
+              echo "No assets found, downloading source code archives..."
+              if [ -n "$(echo "$release" | jq -r '.zipball_url')" ]; then
+                wget -O "${RELEASE_TAG}.zip" "$(echo "$release" | jq -r '.zipball_url')"
               fi
-            done
+              if [ -n "$(echo "$release" | jq -r '.tarball_url')" ]; then
+                wget -O "${RELEASE_TAG}.tar.gz" "$(echo "$release" | jq -r '.tarball_url')"
+              fi
+            else
+              # 下载所有资产文件
+              echo "$assets_urls" | while read -r url; do
+                if [ ! -z "$url" ]; then
+                  echo "Downloading: $url"
+                  wget "$url"
+                fi
+              done
+            fi
             
             # 创建 Gitee 发行版
             echo "Creating Gitee release: $RELEASE_TAG"
@@ -98,7 +114,7 @@ jobs:
             if echo "$response" | jq -e '.id' > /dev/null; then
               echo "Release created successfully"
               
-              # 上传附件
+              # 上传所有文件
               for file in *; do
                 if [ -f "$file" ]; then
                   echo "Uploading: $file"
@@ -108,12 +124,11 @@ jobs:
                     -F "file=@${file}" \
                     "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases/${RELEASE_TAG}/attach_files")
                   
-                  # 检查 HTTP 状态码
+                  # 检查上传响应
                   if [[ "$upload_response" == *"success"* ]] || [[ "$upload_response" == *"created"* ]]; then
                     echo "Successfully uploaded: $file"
                   else
                     echo "Failed to upload $file. Response: $upload_response"
-                    # 不退出，继续尝试上传其他文件
                   fi
                   
                   # 等待一下，避免 API 限制
@@ -121,7 +136,8 @@ jobs:
                 fi
               done
             else
-              echo "Failed to create release. Response: $response"
+              error_msg=$(echo "$response" | jq -r '.message // "Unknown error"')
+              echo "Failed to create release. Response: {\"message\":\"${error_msg}\"}"
             fi
             
             cd ..
