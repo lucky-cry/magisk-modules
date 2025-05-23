@@ -1,0 +1,24 @@
+name: Sync to Gitee
+
+on:
+  push:
+    branches:
+      - '*'   # 监听所有分支
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Mirror to Gitee
+        env:
+          GITEE_USER: ${{ secrets.GITEE_USER }}
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+        run: |
+          git config --global user.name "${GITEE_USER}"
+          git config --global user.email "${GITEE_USER}@users.noreply.github.com"
+          git remote add gitee https://${GITEE_USER}:${GITEE_TOKEN}@gitee.com/${GITEE_USER}/magisk-modules.git
+          git push --mirror gitee 
