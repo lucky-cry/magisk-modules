@@ -139,29 +139,37 @@ jobs:
                   while [ $retry_count -lt $max_retries ] && [ $upload_success = false ]; do
                     echo "Uploading $file (attempt $(($retry_count + 1))/$max_retries)..."
                     
+                    # 获取release ID
+                    release_id=$(echo "$response" | jq -r '.id')
+                    
                     upload_response=$(curl -X POST \
                       -H "Content-Type: multipart/form-data" \
                       -F "access_token=${GITEE_TOKEN}" \
                       -F "file=@${file}" \
                       -w "\n%{http_code}" \
-                      "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases/${RELEASE_TAG}/attach_files")
+                      "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases/${release_id}/assets")
                     
                     http_code=$(echo "$upload_response" | tail -n1)
                     response_body=$(echo "$upload_response" | sed '$d')
                     
-                    echo "HTTP Status Code: $http_code"
-                    echo "Response Body: $response_body"
-                    
+                    # 只显示关键错误信息
                     if [ "$http_code" = "201" ] || [ "$http_code" = "200" ]; then
                       echo "Successfully uploaded: $file"
                       upload_success=true
                     else
                       retry_count=$(($retry_count + 1))
                       if [ $retry_count -lt $max_retries ]; then
-                        echo "Failed to upload $file. Retrying in 5 seconds..."
+                        echo "Failed to upload $file (HTTP ${http_code}). Retrying in 5 seconds..."
                         sleep 5
                       else
-                        echo "Failed to upload $file after $max_retries attempts."
+                        echo "Failed to upload $file after $max_retries attempts. Last status code: ${http_code}"
+                        # 如果是 JSON 响应，尝试提取错误信息
+                        if [[ "$response_body" == *"message"* ]]; then
+                          error_msg=$(echo "$response_body" | jq -r '.message // empty')
+                          if [ ! -z "$error_msg" ]; then
+                            echo "Error message: $error_msg"
+                          fi
+                        fi
                       fi
                     fi
                   done
@@ -244,27 +252,37 @@ jobs:
                 while [ $retry_count -lt $max_retries ] && [ $upload_success = false ]; do
                   echo "Uploading $file (attempt $(($retry_count + 1))/$max_retries)..."
                   
-                  # 使用 -v 参数查看更详细的请求信息
-                  upload_response=$(curl -v -X POST \
+                  # 获取release ID
+                  release_id=$(echo "$response" | jq -r '.id')
+                  
+                  upload_response=$(curl -X POST \
                     -H "Content-Type: multipart/form-data" \
                     -F "access_token=${GITEE_TOKEN}" \
                     -F "file=@${file}" \
-                    "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases/${RELEASE_TAG}/attach_files" 2>&1)
+                    -w "\n%{http_code}" \
+                    "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases/${release_id}/assets")
                   
-                  # 检查上传响应
-                  if [[ "$upload_response" == *"success"* ]] || [[ "$upload_response" == *"created"* ]]; then
+                  http_code=$(echo "$upload_response" | tail -n1)
+                  response_body=$(echo "$upload_response" | sed '$d')
+                  
+                  # 只显示关键错误信息
+                  if [ "$http_code" = "201" ] || [ "$http_code" = "200" ]; then
                     echo "Successfully uploaded: $file"
                     upload_success=true
                   else
                     retry_count=$(($retry_count + 1))
                     if [ $retry_count -lt $max_retries ]; then
-                      echo "Failed to upload $file. Retrying in 5 seconds..."
-                      echo "Response: $upload_response"
+                      echo "Failed to upload $file (HTTP ${http_code}). Retrying in 5 seconds..."
                       sleep 5
                     else
-                      echo "Failed to upload $file after $max_retries attempts."
-                      echo "Response: $upload_response"
-                      # 不退出，继续尝试上传其他文件
+                      echo "Failed to upload $file after $max_retries attempts. Last status code: ${http_code}"
+                      # 如果是 JSON 响应，尝试提取错误信息
+                      if [[ "$response_body" == *"message"* ]]; then
+                        error_msg=$(echo "$response_body" | jq -r '.message // empty')
+                        if [ ! -z "$error_msg" ]; then
+                          echo "Error message: $error_msg"
+                        fi
+                      fi
                     fi
                   fi
                 done
