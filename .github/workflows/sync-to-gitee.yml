@@ -1,19 +1,18 @@
 name: Sync to Gitee
 
 on:
-  # 监听 build-module 工作流程完成
-  workflow_run:
-    workflows: ["Build Magisk Module"]
-    types:
-      - completed
+  push:
+    branches:
+      - 'Hcfile_sharing'
   workflow_dispatch:
 
 jobs:
   sync:
-    # 只在 build-module 工作流成功时运行
-    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     steps:
+      - name: Sleep for 30 seconds
+        run: sleep 30
+        
       - name: Checkout code
         uses: actions/checkout@v3
         with:
@@ -53,67 +52,60 @@ jobs:
           
           echo "Push completed"
 
-      - name: Sync All Releases to Gitee
-        if: github.event_name == 'workflow_dispatch'
+      - name: Sync Latest Release to Gitee
         env:
           GITEE_USER: lucky__cat
           GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 获取所有 GitHub 发行版
-          releases=$(curl -H "Authorization: token $GH_TOKEN" \
-            "https://api.github.com/repos/${{ github.repository }}/releases")
+          # 获取最新的 GitHub 发行版
+          latest_release=$(curl -H "Authorization: token $GH_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/latest")
           
-          echo "Found releases to sync"
+          RELEASE_TAG=$(echo "$latest_release" | jq -r '.tag_name')
+          RELEASE_NAME=$(echo "$latest_release" | jq -r '.name')
+          RELEASE_BODY=$(echo "$latest_release" | jq -r '.body')
           
-          # 遍历所有发行版
-          echo "$releases" | jq -c '.[]' | while read -r release; do
-            RELEASE_TAG=$(echo "$release" | jq -r '.tag_name')
-            RELEASE_NAME=$(echo "$release" | jq -r '.name')
-            RELEASE_BODY=$(echo "$release" | jq -r '.body')
-            
-            echo "Processing release: $RELEASE_TAG"
-            
-            # 下载该发行版的所有附件
-            mkdir -p "release_assets_${RELEASE_TAG}"
-            cd "release_assets_${RELEASE_TAG}"
-            
-            # 获取并下载所有资产
-            echo "$release" | jq -r '.assets[] | .browser_download_url' | while read -r url; do
-              if [ ! -z "$url" ]; then
-                echo "Downloading asset: $url"
-                filename=$(basename "$url")
-                curl -L -H "Authorization: token $GH_TOKEN" -o "$filename" "$url"
-                echo "Downloaded: $filename"
-              fi
-            done
-            
-            # 创建 Gitee 发行版
-            echo "Creating Gitee release: $RELEASE_TAG"
-            RELEASE_BODY="${RELEASE_BODY:-"从 GitHub 同步的发行版 ${RELEASE_TAG}"}"
-            response=$(curl -s -X POST \
-              -H "Content-Type: application/json;charset=UTF-8" \
-              -d "{\"access_token\":\"${GITEE_TOKEN}\",\"tag_name\":\"${RELEASE_TAG}\",\"name\":\"${RELEASE_NAME}\",\"body\":\"${RELEASE_BODY}\",\"prerelease\":false,\"target_commitish\":\"$(git rev-parse HEAD)\"}" \
-              "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases")
-            
-            # 上传所有文件
-            for file in *; do
-              if [ -f "$file" ]; then
-                echo "Uploading: $file"
-                release_id=$(echo "$response" | jq -r '.id')
-                upload_response=$(curl -X POST \
-                  -H "Content-Type: multipart/form-data" \
-                  -F "access_token=${GITEE_TOKEN}" \
-                  -F "file=@${file}" \
-                  "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases/${release_id}/attach_files")
-                
-                echo "Upload response: $upload_response"
-                sleep 2
-              fi
-            done
-            
-            cd ..
-            rm -rf "release_assets_${RELEASE_TAG}"
-            echo "Completed release: $RELEASE_TAG"
-            sleep 2
-          done 
+          echo "Processing latest release: $RELEASE_TAG"
+          
+          # 下载发行版附件
+          mkdir -p "release_assets"
+          cd "release_assets"
+          
+          # 获取并下载资产
+          echo "$latest_release" | jq -r '.assets[] | .browser_download_url' | while read -r url; do
+            if [ ! -z "$url" ]; then
+              echo "Downloading asset: $url"
+              filename=$(basename "$url")
+              curl -L -H "Authorization: token $GH_TOKEN" -o "$filename" "$url"
+              echo "Downloaded: $filename"
+            fi
+          done
+          
+          # 创建 Gitee 发行版
+          echo "Creating Gitee release: $RELEASE_TAG"
+          RELEASE_BODY="${RELEASE_BODY:-"从 GitHub 同步的发行版 ${RELEASE_TAG}"}"
+          response=$(curl -s -X POST \
+            -H "Content-Type: application/json;charset=UTF-8" \
+            -d "{\"access_token\":\"${GITEE_TOKEN}\",\"tag_name\":\"${RELEASE_TAG}\",\"name\":\"${RELEASE_NAME}\",\"body\":\"${RELEASE_BODY}\",\"prerelease\":false,\"target_commitish\":\"$(git rev-parse HEAD)\"}" \
+            "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases")
+          
+          # 上传所有文件
+          for file in *; do
+            if [ -f "$file" ]; then
+              echo "Uploading: $file"
+              release_id=$(echo "$response" | jq -r '.id')
+              upload_response=$(curl -X POST \
+                -H "Content-Type: multipart/form-data" \
+                -F "access_token=${GITEE_TOKEN}" \
+                -F "file=@${file}" \
+                "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases/${release_id}/attach_files")
+              
+              echo "Upload response: $upload_response"
+              sleep 2
+            fi
+          done
+          
+          cd ..
+          rm -rf "release_assets"
+          echo "Completed release sync" 
