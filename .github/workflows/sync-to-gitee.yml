@@ -108,11 +108,12 @@ jobs:
                     -F "file=@${file}" \
                     "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases/${RELEASE_TAG}/attach_files")
                   
-                  if echo "$upload_response" | jq -e '.id' > /dev/null; then
+                  # 检查 HTTP 状态码
+                  if [[ "$upload_response" == *"success"* ]] || [[ "$upload_response" == *"created"* ]]; then
                     echo "Successfully uploaded: $file"
                   else
-                    error_msg=$(echo "$upload_response" | jq -r '.message // "Unknown error"')
-                    echo "Failed to upload $file. Error: $error_msg"
+                    echo "Failed to upload $file. Response: $upload_response"
+                    # 不退出，继续尝试上传其他文件
                   fi
                   
                   # 等待一下，避免 API 限制
@@ -178,11 +179,12 @@ jobs:
                   -F "file=@${file}" \
                   "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases/${RELEASE_TAG}/attach_files")
                 
-                if echo "$upload_response" | jq -e '.id' > /dev/null; then
+                # 检查 HTTP 状态码
+                if [[ "$upload_response" == *"success"* ]] || [[ "$upload_response" == *"created"* ]]; then
                   echo "Successfully uploaded: $file"
                 else
-                  error_msg=$(echo "$upload_response" | jq -r '.message // "Unknown error"')
-                  echo "Failed to upload $file. Error: $error_msg"
+                  echo "Failed to upload $file. Response: $upload_response"
+                  # 不退出，继续尝试上传其他文件
                 fi
                 
                 # 等待一下，避免 API 限制

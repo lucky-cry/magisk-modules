@@ -177,11 +177,11 @@ jobs:
                 -F "file=@${file}" \
                 "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases/${RELEASE_TAG}/attach_files")
               
-              if echo "$upload_response" | jq -e '.id' > /dev/null; then
+              # 检查上传响应
+              if [[ "$upload_response" == *"success"* ]] || [[ "$upload_response" == *"created"* ]]; then
                 echo "Successfully uploaded: $file"
               else
-                error_msg=$(echo "$upload_response" | jq -r '.message // "Unknown error"')
-                echo "Failed to upload $file. Error: $error_msg"
+                echo "Failed to upload $file. Response: $upload_response"
                 exit 1
               fi
               
