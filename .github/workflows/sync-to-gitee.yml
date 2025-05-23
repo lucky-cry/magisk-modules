@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - '*'   # 监听所有分支
+  release:
+    types: [published]  # 添加发行版触发器
   workflow_dispatch:
 
 jobs:
@@ -48,4 +50,42 @@ jobs:
           # 推送所有标签
           git push gitee --tags --force
           
-          echo "Push completed" 
+          echo "Push completed"
+
+      - name: Sync Releases to Gitee
+        if: github.event_name == 'release'
+        env:
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+        run: |
+          # 获取最新发行版信息
+          RELEASE_TAG="${{ github.event.release.tag_name }}"
+          RELEASE_NAME="${{ github.event.release.name }}"
+          RELEASE_BODY="${{ github.event.release.body }}"
+          
+          # 下载发行版附件
+          mkdir -p release_assets
+          cd release_assets
+          for asset_url in $(echo "${{ toJson(github.event.release.assets) }}" | jq -r '.[].browser_download_url'); do
+            wget $asset_url
+          done
+          
+          # 使用 Gitee API 创建发行版
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            -H "Authorization: token $GITEE_TOKEN" \
+            "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases" \
+            -d '{
+              "tag_name": "'"${RELEASE_TAG}"'",
+              "name": "'"${RELEASE_NAME}"'",
+              "body": "'"${RELEASE_BODY}"'",
+              "prerelease": false
+            }'
+          
+          # 上传发行版附件
+          for file in *; do
+            curl -X POST \
+              -H "Authorization: token $GITEE_TOKEN" \
+              -F "access_token=$GITEE_TOKEN" \
+              -F "file=@$file" \
+              "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases/${RELEASE_TAG}/attach_files"
+          done 
