@@ -142,20 +142,23 @@ jobs:
                     # 获取release ID
                     release_id=$(echo "$response" | jq -r '.id')
                     
-                    # 使用正确的 API 端点和参数
+                    # 使用新的上传方式
                     upload_response=$(curl -X POST \
                       -H "Content-Type: multipart/form-data" \
                       -F "access_token=${GITEE_TOKEN}" \
-                      -F "refresh_token=${GITEE_TOKEN}" \
                       -F "file=@${file}" \
-                      -F "name=$(basename ${file})" \
                       -w "\n%{http_code}" \
-                      "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases/${release_id}/attachments")
+                      "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases/${release_id}/attach_files")
                     
                     http_code=$(echo "$upload_response" | tail -n1)
                     response_body=$(echo "$upload_response" | sed '$d')
                     
-                    echo "Debug - Response body: $response_body"
+                    # 只显示 JSON 响应，忽略 HTML
+                    if [[ "$response_body" == *"<!DOCTYPE html>"* ]]; then
+                      echo "Received HTML response (隐藏)"
+                    elif [[ "$response_body" == *"{"* ]]; then
+                      echo "API Response: $response_body"
+                    fi
                     
                     if [ "$http_code" = "201" ] || [ "$http_code" = "200" ]; then
                       echo "Successfully uploaded: $file"
@@ -167,7 +170,7 @@ jobs:
                         sleep 5
                       else
                         echo "Failed to upload $file after $max_retries attempts. Last status code: ${http_code}"
-                        if [[ "$response_body" == *"message"* ]]; then
+                        if [[ "$response_body" == *"message"* ]] && [[ "$response_body" != *"<!DOCTYPE html>"* ]]; then
                           error_msg=$(echo "$response_body" | jq -r '.message // empty')
                           if [ ! -z "$error_msg" ]; then
                             echo "Error message: $error_msg"
@@ -258,20 +261,23 @@ jobs:
                   # 获取release ID
                   release_id=$(echo "$response" | jq -r '.id')
                   
-                  # 使用正确的 API 端点和参数
+                  # 使用新的上传方式
                   upload_response=$(curl -X POST \
                     -H "Content-Type: multipart/form-data" \
                     -F "access_token=${GITEE_TOKEN}" \
-                    -F "refresh_token=${GITEE_TOKEN}" \
                     -F "file=@${file}" \
-                    -F "name=$(basename ${file})" \
                     -w "\n%{http_code}" \
-                    "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases/${release_id}/attachments")
+                    "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases/${release_id}/attach_files")
                   
                   http_code=$(echo "$upload_response" | tail -n1)
                   response_body=$(echo "$upload_response" | sed '$d')
                   
-                  echo "Debug - Response body: $response_body"
+                  # 只显示 JSON 响应，忽略 HTML
+                  if [[ "$response_body" == *"<!DOCTYPE html>"* ]]; then
+                    echo "Received HTML response (隐藏)"
+                  elif [[ "$response_body" == *"{"* ]]; then
+                    echo "API Response: $response_body"
+                  fi
                   
                   if [ "$http_code" = "201" ] || [ "$http_code" = "200" ]; then
                     echo "Successfully uploaded: $file"
@@ -283,7 +289,7 @@ jobs:
                       sleep 5
                     else
                       echo "Failed to upload $file after $max_retries attempts. Last status code: ${http_code}"
-                      if [[ "$response_body" == *"message"* ]]; then
+                      if [[ "$response_body" == *"message"* ]] && [[ "$response_body" != *"<!DOCTYPE html>"* ]]; then
                         error_msg=$(echo "$response_body" | jq -r '.message // empty')
                         if [ ! -z "$error_msg" ]; then
                           echo "Error message: $error_msg"
