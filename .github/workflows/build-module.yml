@@ -54,6 +54,12 @@ jobs:
           cd ..
           echo "zip_name=$ZIP_NAME" >> $GITHUB_OUTPUT
 
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: module-zip
+          path: ${{ steps.build.outputs.zip_name }}
+
       - name: Create Release
         id: create_release
         uses: softprops/action-gh-release@v1
@@ -100,6 +106,12 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
+
+      - name: Download artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: module-zip
+          path: .
 
       - name: Configure Git
         env:
