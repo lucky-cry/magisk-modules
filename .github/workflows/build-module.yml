@@ -152,6 +152,8 @@ jobs:
           done
           
           # 使用 Gitee API 创建发行版
+          # 确保描述不为空
+          RELEASE_BODY="${RELEASE_BODY:-"从 GitHub 同步的发行版 ${RELEASE_TAG}"}"
           curl -X POST \
             -H "Content-Type: application/json" \
             -H "Authorization: token $GITEE_TOKEN" \

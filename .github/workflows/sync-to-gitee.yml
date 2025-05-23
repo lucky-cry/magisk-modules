@@ -85,6 +85,8 @@ jobs:
             
             # 创建 Gitee 发行版
             echo "Creating Gitee release: $RELEASE_TAG"
+            # 确保描述不为空
+            RELEASE_BODY="${RELEASE_BODY:-"从 GitHub 同步的发行版 ${RELEASE_TAG}"}"
             response=$(curl -s -X POST \
               -H "Content-Type: application/json;charset=UTF-8" \
               -d "{\"access_token\":\"${GITEE_TOKEN}\",\"tag_name\":\"${RELEASE_TAG}\",\"name\":\"${RELEASE_NAME}\",\"body\":\"${RELEASE_BODY}\",\"prerelease\":false,\"target_commitish\":\"$(git rev-parse HEAD)\"}" \
@@ -145,6 +147,8 @@ jobs:
           
           # 创建 Gitee 发行版
           echo "Creating Gitee release..."
+          # 确保描述不为空
+          RELEASE_BODY="${RELEASE_BODY:-"从 GitHub 同步的发行版 ${RELEASE_TAG}"}"
           response=$(curl -s -X POST \
             -H "Content-Type: application/json;charset=UTF-8" \
             -d "{\"access_token\":\"${GITEE_TOKEN}\",\"tag_name\":\"${RELEASE_TAG}\",\"name\":\"${RELEASE_NAME}\",\"body\":\"${RELEASE_BODY}\",\"prerelease\":false,\"target_commitish\":\"$(git rev-parse HEAD)\"}" \
