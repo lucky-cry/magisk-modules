@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Mirror to Gitee
-        uses: Yikun/hub-mirror-action@v1.2
+        uses: Yikun/hub-mirror-action@v1.5
         with:
           src: lucky-cry/magisk-modules
           dst: lucky__cat/magisk-modules
