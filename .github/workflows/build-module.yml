@@ -18,10 +18,10 @@ jobs:
       - name: Get module info
         id: module_info
         run: |
-          MODULE_ID=$(grep -oP 'id=\K.*' module.prop)
-          MODULE_NAME=$(grep -oP 'name=\K.*' module.prop)
-          MODULE_VERSION=$(grep -oP 'version=\K.*' module.prop)
-          MODULE_VERSIONCODE=$(grep -oP 'versionCode=\K.*' module.prop)
+          MODULE_ID=$(grep -oP 'id=\K.*' Source/module.prop)
+          MODULE_NAME=$(grep -oP 'name=\K.*' Source/module.prop)
+          MODULE_VERSION=$(grep -oP 'version=\K.*' Source/module.prop)
+          MODULE_VERSIONCODE=$(grep -oP 'versionCode=\K.*' Source/module.prop)
           BRANCH_NAME=${GITHUB_REF#refs/heads/}
           REPO_NAME=${{ github.repository }}
           
@@ -36,7 +36,7 @@ jobs:
         run: |
           REPO_NAME=${{ steps.module_info.outputs.repo_name }}
           BRANCH_NAME=${{ steps.module_info.outputs.branch_name }}
-          sed -i "s|updateJson=.*|updateJson=https://raw.githubusercontent.com/${REPO_NAME}/${BRANCH_NAME}/update.json|g" module.prop
+          sed -i "s|updateJson=.*|updateJson=https://raw.githubusercontent.com/${REPO_NAME}/${BRANCH_NAME}/update.json|g" Source/module.prop
 
       - name: Build module zip
         id: build
@@ -45,10 +45,8 @@ jobs:
           MODULE_VERSION=${{ steps.module_info.outputs.module_version }}
           BRANCH_NAME=${{ steps.module_info.outputs.branch_name }}
           ZIP_NAME="${MODULE_ID}-${MODULE_VERSION}.zip"
-          # 创建临时目录并复制 Source 内容和 module.prop
           mkdir temp_module
           cp -r Source/* temp_module/
-          cp module.prop temp_module/
           # 进入临时目录打包
           cd temp_module
           zip -r "../$ZIP_NAME" ./*
@@ -86,6 +84,6 @@ jobs:
           # Commit and push update.json to当前分支
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
-          git add update.json module.prop
+          git add update.json Source/module.prop
           git commit -m "Update module to v${MODULE_VERSION} (${MODULE_VERSIONCODE})"
           git push origin ${BRANCH_NAME}
