@@ -72,16 +72,17 @@ jobs:
           REPO_NAME=${{ steps.module_info.outputs.repo_name }}
           BRANCH_NAME=${{ steps.module_info.outputs.branch_name }}
           ZIP_NAME=${{ steps.build.outputs.zip_name }}
+          # 读取 changelog 文件内容作为 changelog
+          CHANGELOG=$(cat changelog | sed ':a;N;$!ba;s/\n/\\n/g')
           # Create or update update.json
           cat > update.json << EOF
           {
             "version": "${MODULE_VERSION}",
             "versionCode": ${MODULE_VERSIONCODE},
             "zipUrl": "https://github.com/${REPO_NAME}/releases/download/v${MODULE_VERSION}/${ZIP_NAME}",
-            "changelog": "https://github.com/${REPO_NAME}/releases/tag/v${MODULE_VERSION}"
+            "changelog": "${CHANGELOG}"
           }
           EOF
-          # Commit and push update.json to当前分支
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
           git add update.json Source/module.prop
