@@ -80,23 +80,21 @@ jobs:
             assets_urls=$(echo "$release" | jq -r '.assets[].browser_download_url')
             assets_names=$(echo "$release" | jq -r '.assets[].name')
             
-            # 如果没有资产，尝试获取源代码压缩包
-            if [ -z "$assets_urls" ]; then
-              echo "No assets found, downloading source code archives..."
-              if [ -n "$(echo "$release" | jq -r '.zipball_url')" ]; then
-                wget -O "${RELEASE_TAG}.zip" "$(echo "$release" | jq -r '.zipball_url')"
+            # 下载所有资产文件
+            echo "$assets_urls" | while read -r url; do
+              if [ ! -z "$url" ]; then
+                echo "Downloading: $url"
+                wget "$url"
               fi
-              if [ -n "$(echo "$release" | jq -r '.tarball_url')" ]; then
-                wget -O "${RELEASE_TAG}.tar.gz" "$(echo "$release" | jq -r '.tarball_url')"
-              fi
-            else
-              # 下载所有资产文件
-              echo "$assets_urls" | while read -r url; do
-                if [ ! -z "$url" ]; then
-                  echo "Downloading: $url"
-                  wget "$url"
-                fi
-              done
+            done
+            
+            # 无论是否有资产，都下载源代码压缩包
+            echo "Downloading source code archives..."
+            if [ -n "$(echo "$release" | jq -r '.zipball_url')" ]; then
+              wget -O "${RELEASE_TAG}.zip" "$(echo "$release" | jq -r '.zipball_url')"
+            fi
+            if [ -n "$(echo "$release" | jq -r '.tarball_url')" ]; then
+              wget -O "${RELEASE_TAG}.tar.gz" "$(echo "$release" | jq -r '.tarball_url')"
             fi
             
             # 创建 Gitee 发行版
@@ -169,6 +167,11 @@ jobs:
             wget $asset_url
           done
           
+          # 下载源代码压缩包
+          echo "Downloading source code archives..."
+          wget -O "${RELEASE_TAG}.zip" "https://github.com/${{ github.repository }}/archive/refs/tags/${RELEASE_TAG}.zip"
+          wget -O "${RELEASE_TAG}.tar.gz" "https://github.com/${{ github.repository }}/archive/refs/tags/${RELEASE_TAG}.tar.gz"
+          
           # 创建 Gitee 发行版
           echo "Creating Gitee release..."
           # 确保描述不为空
@@ -212,4 +215,4 @@ jobs:
             exit 1
           fi
           
-          echo "Release sync completed" 
+          echo "Release sync completed"
