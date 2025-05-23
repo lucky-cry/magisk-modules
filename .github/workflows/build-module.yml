@@ -55,7 +55,7 @@ jobs:
           echo "zip_name=$ZIP_NAME" >> $GITHUB_OUTPUT
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v2
         with:
           name: module-zip
           path: ${{ steps.build.outputs.zip_name }}
@@ -108,7 +108,7 @@ jobs:
           fetch-tags: true
 
       - name: Download artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v2
         with:
           name: module-zip
           path: .
