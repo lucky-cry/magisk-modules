@@ -1,6 +1,6 @@
 {
-  "version": "2.6.8",
-  "versionCode": 2025052308,
-  "zipUrl": "https://github.com/lucky-cry/magisk-modules/releases/download/v2.6.8/Hcfile_sharing-2.6.8.zip",
-  "changelog": "https://raw.githubusercontent.com/lucky-cry/magisk-modules/Hcfile_sharing/changelog"
+  "version": "2.6.9",
+  "versionCode": 2025052309,
+  "zipUrl": "https://gitee.com/lucky__cat/magisk-modules/releases/download/v2.6.9/Hcfile_sharing-2.6.9.zip",
+  "changelog": "https://gitee.com/lucky__cat/magisk-modules/raw/Hcfile_sharing/changelog"
 }

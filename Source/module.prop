@@ -3,5 +3,5 @@ name=MAT - 目录定向挂载
 version=2.6.9
 versionCode=2025052309
 author=HChai && 时雨🌌星空 && 帅气的小懒猫
-updateJson=https://raw.githubusercontent.com/lucky-cry/magisk-modules/Hcfile_sharing/update.json
+updateJson=https://gitee.com/lucky__cat/magisk-modules/raw/Hcfile_sharing/update.json
 description=自定义目录定向挂载 (存储重定向) 运行状态：[待重启]
