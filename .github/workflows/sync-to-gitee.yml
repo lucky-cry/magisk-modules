@@ -23,4 +23,5 @@ jobs:
           git config --global user.name "${GITEE_USER}"
           git config --global user.email "${GITEE_USER}@users.noreply.github.com"
           git remote add gitee https://${GITEE_USER}:${GITEE_TOKEN}@gitee.com/${GITEE_USER}/magisk-modules.git
-          git push --mirror gitee 
+          git push gitee --all --force
+          git push gitee --tags --force 
