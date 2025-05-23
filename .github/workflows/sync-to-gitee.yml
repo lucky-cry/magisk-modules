@@ -85,21 +85,22 @@ jobs:
             
             # 创建 Gitee 发行版
             echo "Creating Gitee release: $RELEASE_TAG"
-            curl --fail -X POST \
-              -H "Content-Type: application/json" \
-              -H "Authorization: token $GITEE_TOKEN" \
+            response=$(curl -X POST \
               "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases" \
-              -d "{\"tag_name\":\"${RELEASE_TAG}\",\"name\":\"${RELEASE_NAME}\",\"body\":\"${RELEASE_BODY}\",\"prerelease\":false}" || true
+              -H "Content-Type: application/json" \
+              -d "{\"access_token\":\"${GITEE_TOKEN}\",\"tag_name\":\"${RELEASE_TAG}\",\"name\":\"${RELEASE_NAME}\",\"body\":\"${RELEASE_BODY}\",\"prerelease\":false}")
+            
+            echo "Release creation response: $response"
             
             # 上传附件
             for file in *; do
               if [ -f "$file" ]; then
                 echo "Uploading: $file"
-                curl --fail -X POST \
-                  -H "Authorization: token $GITEE_TOKEN" \
-                  -F "access_token=$GITEE_TOKEN" \
-                  -F "file=@$file" \
-                  "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases/${RELEASE_TAG}/attach_files" || true
+                response=$(curl -X POST \
+                  "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases/${RELEASE_TAG}/attach_files" \
+                  -F "access_token=${GITEE_TOKEN}" \
+                  -F "file=@${file}")
+                echo "Upload response for $file: $response"
               fi
             done
             
@@ -131,22 +132,23 @@ jobs:
           
           # 创建 Gitee 发行版
           echo "Creating Gitee release..."
-          curl --fail -X POST \
-            -H "Content-Type: application/json" \
-            -H "Authorization: token $GITEE_TOKEN" \
+          response=$(curl -X POST \
             "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases" \
-            -d "{\"tag_name\":\"${RELEASE_TAG}\",\"name\":\"${RELEASE_NAME}\",\"body\":\"${RELEASE_BODY}\",\"prerelease\":false}"
+            -H "Content-Type: application/json" \
+            -d "{\"access_token\":\"${GITEE_TOKEN}\",\"tag_name\":\"${RELEASE_TAG}\",\"name\":\"${RELEASE_NAME}\",\"body\":\"${RELEASE_BODY}\",\"prerelease\":false}")
+          
+          echo "Release creation response: $response"
           
           # 上传附件
           echo "Uploading assets..."
           for file in *; do
             if [ -f "$file" ]; then
               echo "Uploading: $file"
-              curl --fail -X POST \
-                -H "Authorization: token $GITEE_TOKEN" \
-                -F "access_token=$GITEE_TOKEN" \
-                -F "file=@$file" \
-                "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases/${RELEASE_TAG}/attach_files"
+              response=$(curl -X POST \
+                "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases/${RELEASE_TAG}/attach_files" \
+                -F "access_token=${GITEE_TOKEN}" \
+                -F "file=@${file}")
+              echo "Upload response for $file: $response"
             fi
           done
           
