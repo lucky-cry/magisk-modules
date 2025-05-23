@@ -1,15 +1,17 @@
 name: Sync to Gitee
 
 on:
-  push:
-    branches:
-      - '*'
-  release:
-    types: [published, created, edited]
+  # 监听 build-module 工作流程完成
+  workflow_run:
+    workflows: ["Build Magisk Module"]
+    types:
+      - completed
   workflow_dispatch:
 
 jobs:
   sync:
+    # 只在 build-module 工作流成功时运行
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
