@@ -13,8 +13,8 @@ jobs:
       - name: Mirror to Gitee
         uses: Yikun/hub-mirror-action@v1.4
         with:
-          src: github/lucky-cry/magisk-modules
-          dst: gitee/lucky_cat/magisk-modules
+          src: lucky-cry/magisk-modules
+          dst: lucky__cat/magisk-modules
           dst_token: ${{ secrets.GITEE_TOKEN }}
           force_update: true
           debug: true
