@@ -1,15 +1,31 @@
-name: Sync to Gitee
+name: Build Magisk Module
 
 on:
   push:
     branches:
-      - '*'   # 监听所有分支
+      - '*'
+      - '!main'
+    paths:
+      - 'module.prop'
+      - 'META-INF/**'
+      - 'system/**'
+      - 'customize.sh'
+      - 'service.sh'
+      - 'post-fs-data.sh'
+      - 'uninstall.sh'
   release:
-    types: [published]  # 添加发行版触发器
+    types: [published, created, edited]  # 移除 branches 过滤器
   workflow_dispatch:
 
 jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      # ... 保持 build 任务不变 ...
+
   sync:
+    needs: build  # 添加任务依赖，确保在 build 之后运行
+    if: github.event_name == 'release' || github.event_name == 'push'  # 只在 release 或 push 时运行
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -52,24 +68,29 @@ jobs:
           
           echo "Push completed"
 
-      - name: Sync Releases to Gitee
+      - name: Sync Release to Gitee
         if: github.event_name == 'release'
         env:
+          GITEE_USER: lucky__cat
           GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
         run: |
-          # 获取最新发行版信息
+          # 获取发行版信息
           RELEASE_TAG="${{ github.event.release.tag_name }}"
           RELEASE_NAME="${{ github.event.release.name }}"
           RELEASE_BODY="${{ github.event.release.body }}"
+          
+          echo "Syncing release: $RELEASE_TAG"
           
           # 下载发行版附件
           mkdir -p release_assets
           cd release_assets
           for asset_url in $(echo "${{ toJson(github.event.release.assets) }}" | jq -r '.[].browser_download_url'); do
+            echo "Downloading: $asset_url"
             wget $asset_url
           done
           
-          # 使用 Gitee API 创建发行版
+          # 创建 Gitee 发行版
+          echo "Creating Gitee release..."
           curl -X POST \
             -H "Content-Type: application/json" \
             -H "Authorization: token $GITEE_TOKEN" \
@@ -81,11 +102,17 @@ jobs:
               "prerelease": false
             }'
           
-          # 上传发行版附件
+          # 上传附件
+          echo "Uploading assets..."
           for file in *; do
-            curl -X POST \
-              -H "Authorization: token $GITEE_TOKEN" \
-              -F "access_token=$GITEE_TOKEN" \
-              -F "file=@$file" \
-              "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases/${RELEASE_TAG}/attach_files"
-          done 
+            if [ -f "$file" ]; then
+              echo "Uploading: $file"
+              curl -X POST \
+                -H "Authorization: token $GITEE_TOKEN" \
+                -F "access_token=$GITEE_TOKEN" \
+                -F "file=@$file" \
+                "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases/${RELEASE_TAG}/attach_files"
+            fi
+          done
+          
+          echo "Release sync completed" 
