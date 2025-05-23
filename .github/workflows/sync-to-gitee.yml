@@ -76,30 +76,37 @@ jobs:
             mkdir -p "release_assets_${RELEASE_TAG}"
             cd "release_assets_${RELEASE_TAG}"
             
-            # 获取所有资产的下载 URL
-            assets_urls=$(echo "$release" | jq -r '.assets[].browser_download_url')
-            assets_names=$(echo "$release" | jq -r '.assets[].name')
+            # 获取并显示所有资产信息
+            echo "Available assets:"
+            echo "$release" | jq -r '.assets[] | "Name: \(.name), URL: \(.browser_download_url)"'
             
-            # 下载所有资产文件
-            echo "$assets_urls" | while read -r url; do
+            # 获取所有资产的下载 URL 和名称
+            echo "$release" | jq -r '.assets[] | .browser_download_url' | while read -r url; do
               if [ ! -z "$url" ]; then
-                echo "Downloading: $url"
-                wget "$url"
+                echo "Downloading asset: $url"
+                filename=$(basename "$url")
+                curl -L -H "Authorization: token $GH_TOKEN" -o "$filename" "$url"
+                echo "Downloaded: $filename"
               fi
             done
             
             # 无论是否有资产，都下载源代码压缩包
             echo "Downloading source code archives..."
             if [ -n "$(echo "$release" | jq -r '.zipball_url')" ]; then
-              wget -O "${RELEASE_TAG}.zip" "$(echo "$release" | jq -r '.zipball_url')"
+              curl -L -H "Authorization: token $GH_TOKEN" -o "${RELEASE_TAG}.zip" "$(echo "$release" | jq -r '.zipball_url')"
+              echo "Downloaded: ${RELEASE_TAG}.zip"
             fi
             if [ -n "$(echo "$release" | jq -r '.tarball_url')" ]; then
-              wget -O "${RELEASE_TAG}.tar.gz" "$(echo "$release" | jq -r '.tarball_url')"
+              curl -L -H "Authorization: token $GH_TOKEN" -o "${RELEASE_TAG}.tar.gz" "$(echo "$release" | jq -r '.tarball_url')"
+              echo "Downloaded: ${RELEASE_TAG}.tar.gz"
             fi
+            
+            # 列出下载的所有文件
+            echo "Downloaded files:"
+            ls -la
             
             # 创建 Gitee 发行版
             echo "Creating Gitee release: $RELEASE_TAG"
-            # 确保描述不为空
             RELEASE_BODY="${RELEASE_BODY:-"从 GitHub 同步的发行版 ${RELEASE_TAG}"}"
             response=$(curl -s -X POST \
               -H "Content-Type: application/json;charset=UTF-8" \
@@ -116,16 +123,15 @@ jobs:
               for file in *; do
                 if [ -f "$file" ]; then
                   echo "Uploading: $file"
-                  # 检查文件大小（Gitee对文件大小有限制，通常为100MB）
-                  file_size=$(du -m "$file" | cut -f1)
-                  size_limit=100 # 100MB
+                  file_size=$(stat -f%z "$file" 2>/dev/null || stat -c%s "$file")
+                  file_size_mb=$((file_size / 1024 / 1024))
+                  size_limit=100
                   
-                  if [ "$file_size" -gt "$size_limit" ]; then
-                    echo "Warning: File $file is ${file_size}MB, which exceeds Gitee's size limit of ${size_limit}MB. Skipping upload."
+                  if [ "$file_size_mb" -gt "$size_limit" ]; then
+                    echo "Warning: File $file is ${file_size_mb}MB, exceeds ${size_limit}MB limit. Skipping."
                     continue
                   fi
                   
-                  # 添加重试机制，最多尝试3次
                   max_retries=3
                   retry_count=0
                   upload_success=false
@@ -133,44 +139,45 @@ jobs:
                   while [ $retry_count -lt $max_retries ] && [ $upload_success = false ]; do
                     echo "Uploading $file (attempt $(($retry_count + 1))/$max_retries)..."
                     
-                    # 使用 -v 参数查看更详细的请求信息
-                    upload_response=$(curl -v -X POST \
+                    upload_response=$(curl -X POST \
                       -H "Content-Type: multipart/form-data" \
                       -F "access_token=${GITEE_TOKEN}" \
                       -F "file=@${file}" \
-                      "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases/${RELEASE_TAG}/attach_files" 2>&1)
+                      -w "\n%{http_code}" \
+                      "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases/${RELEASE_TAG}/attach_files")
                     
-                    # 检查上传响应
-                    if [[ "$upload_response" == *"success"* ]] || [[ "$upload_response" == *"created"* ]]; then
+                    http_code=$(echo "$upload_response" | tail -n1)
+                    response_body=$(echo "$upload_response" | sed '$d')
+                    
+                    echo "HTTP Status Code: $http_code"
+                    echo "Response Body: $response_body"
+                    
+                    if [ "$http_code" = "201" ] || [ "$http_code" = "200" ]; then
                       echo "Successfully uploaded: $file"
                       upload_success=true
                     else
                       retry_count=$(($retry_count + 1))
                       if [ $retry_count -lt $max_retries ]; then
                         echo "Failed to upload $file. Retrying in 5 seconds..."
-                        echo "Response: $upload_response"
                         sleep 5
                       else
                         echo "Failed to upload $file after $max_retries attempts."
-                        echo "Response: $upload_response"
                       fi
                     fi
                   done
                   
-                  # 等待一下，避免 API 限制
-                  sleep 1
+                  sleep 2
                 fi
               done
             else
               error_msg=$(echo "$response" | jq -r '.message // "Unknown error"')
-              echo "Failed to create release. Response: {\"message\":\"${error_msg}\"}"
+              echo "Failed to create release. Error: $error_msg"
             fi
             
             cd ..
             rm -rf "release_assets_${RELEASE_TAG}"
             echo "Completed release: $RELEASE_TAG"
             
-            # 等待一下，避免 API 限制
             sleep 2
           done
 
