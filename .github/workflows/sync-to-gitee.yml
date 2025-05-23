@@ -14,17 +14,37 @@ jobs:
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
+          fetch-tags: true
 
-      - name: Fetch all branches
-        run: git fetch --all
-
-      - name: Mirror to Gitee
+      - name: Configure Git
         env:
-          GITEE_USER: lucky__cat  # 你的 Gitee 用户名
-          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+          GITEE_USER: lucky__cat
         run: |
           git config --global user.name "${GITEE_USER}"
           git config --global user.email "${GITEE_USER}@users.noreply.github.com"
+
+      - name: Fetch all branches and tags
+        run: |
+          git remote set-branches --add origin '*'
+          git fetch --all --tags --prune --unshallow
+          echo "All branches:"
+          git branch -r
+
+      - name: Push to Gitee
+        env:
+          GITEE_USER: lucky__cat
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+        run: |
+          # 添加 Gitee remote
           git remote add gitee https://${GITEE_USER}:${GITEE_TOKEN}@gitee.com/${GITEE_USER}/magisk-modules.git
+          
+          # 获取所有远程分支并创建本地跟踪分支
+          for branch in $(git branch -r | grep -v '\->' | grep 'origin/' | sed 's/origin\///'); do
+            git checkout -b $branch origin/$branch || true
+          done
+          
+          # 推送所有分支和标签到 Gitee
           git push gitee --all --force
-          git push gitee --tags --force 
+          git push gitee --tags --force
+          
+          echo "Push completed" 
