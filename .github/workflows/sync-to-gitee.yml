@@ -116,18 +116,46 @@ jobs:
               for file in *; do
                 if [ -f "$file" ]; then
                   echo "Uploading: $file"
-                  upload_response=$(curl -s -X POST \
-                    -H "Content-Type: multipart/form-data" \
-                    -F "access_token=${GITEE_TOKEN}" \
-                    -F "file=@${file}" \
-                    "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases/${RELEASE_TAG}/attach_files")
+                  # 检查文件大小（Gitee对文件大小有限制，通常为100MB）
+                  file_size=$(du -m "$file" | cut -f1)
+                  size_limit=100 # 100MB
                   
-                  # 检查上传响应
-                  if [[ "$upload_response" == *"success"* ]] || [[ "$upload_response" == *"created"* ]]; then
-                    echo "Successfully uploaded: $file"
-                  else
-                    echo "Failed to upload $file. Response: $upload_response"
+                  if [ "$file_size" -gt "$size_limit" ]; then
+                    echo "Warning: File $file is ${file_size}MB, which exceeds Gitee's size limit of ${size_limit}MB. Skipping upload."
+                    continue
                   fi
+                  
+                  # 添加重试机制，最多尝试3次
+                  max_retries=3
+                  retry_count=0
+                  upload_success=false
+                  
+                  while [ $retry_count -lt $max_retries ] && [ $upload_success = false ]; do
+                    echo "Uploading $file (attempt $(($retry_count + 1))/$max_retries)..."
+                    
+                    # 使用 -v 参数查看更详细的请求信息
+                    upload_response=$(curl -v -X POST \
+                      -H "Content-Type: multipart/form-data" \
+                      -F "access_token=${GITEE_TOKEN}" \
+                      -F "file=@${file}" \
+                      "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases/${RELEASE_TAG}/attach_files" 2>&1)
+                    
+                    # 检查上传响应
+                    if [[ "$upload_response" == *"success"* ]] || [[ "$upload_response" == *"created"* ]]; then
+                      echo "Successfully uploaded: $file"
+                      upload_success=true
+                    else
+                      retry_count=$(($retry_count + 1))
+                      if [ $retry_count -lt $max_retries ]; then
+                        echo "Failed to upload $file. Retrying in 5 seconds..."
+                        echo "Response: $upload_response"
+                        sleep 5
+                      else
+                        echo "Failed to upload $file after $max_retries attempts."
+                        echo "Response: $upload_response"
+                      fi
+                    fi
+                  done
                   
                   # 等待一下，避免 API 限制
                   sleep 1
@@ -192,19 +220,47 @@ jobs:
             for file in *; do
               if [ -f "$file" ]; then
                 echo "Uploading: $file"
-                upload_response=$(curl -s -X POST \
-                  -H "Content-Type: multipart/form-data" \
-                  -F "access_token=${GITEE_TOKEN}" \
-                  -F "file=@${file}" \
-                  "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases/${RELEASE_TAG}/attach_files")
+                # 检查文件大小（Gitee对文件大小有限制，通常为100MB）
+                file_size=$(du -m "$file" | cut -f1)
+                size_limit=100 # 100MB
                 
-                # 检查 HTTP 状态码
-                if [[ "$upload_response" == *"success"* ]] || [[ "$upload_response" == *"created"* ]]; then
-                  echo "Successfully uploaded: $file"
-                else
-                  echo "Failed to upload $file. Response: $upload_response"
-                  # 不退出，继续尝试上传其他文件
+                if [ "$file_size" -gt "$size_limit" ]; then
+                  echo "Warning: File $file is ${file_size}MB, which exceeds Gitee's size limit of ${size_limit}MB. Skipping upload."
+                  continue
                 fi
+                
+                # 添加重试机制，最多尝试3次
+                max_retries=3
+                retry_count=0
+                upload_success=false
+                
+                while [ $retry_count -lt $max_retries ] && [ $upload_success = false ]; do
+                  echo "Uploading $file (attempt $(($retry_count + 1))/$max_retries)..."
+                  
+                  # 使用 -v 参数查看更详细的请求信息
+                  upload_response=$(curl -v -X POST \
+                    -H "Content-Type: multipart/form-data" \
+                    -F "access_token=${GITEE_TOKEN}" \
+                    -F "file=@${file}" \
+                    "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases/${RELEASE_TAG}/attach_files" 2>&1)
+                  
+                  # 检查上传响应
+                  if [[ "$upload_response" == *"success"* ]] || [[ "$upload_response" == *"created"* ]]; then
+                    echo "Successfully uploaded: $file"
+                    upload_success=true
+                  else
+                    retry_count=$(($retry_count + 1))
+                    if [ $retry_count -lt $max_retries ]; then
+                      echo "Failed to upload $file. Retrying in 5 seconds..."
+                      echo "Response: $upload_response"
+                      sleep 5
+                    else
+                      echo "Failed to upload $file after $max_retries attempts."
+                      echo "Response: $upload_response"
+                      # 不退出，继续尝试上传其他文件
+                    fi
+                  fi
+                done
                 
                 # 等待一下，避免 API 限制
                 sleep 1
