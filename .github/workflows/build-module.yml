@@ -125,7 +125,6 @@ jobs:
           echo "Push completed"
 
       - name: Sync Release to Gitee
-        if: github.event_name == 'push' && contains(github.event.head_commit.message, 'Update module to v')
         env:
           GITEE_USER: lucky__cat
           GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
@@ -137,8 +136,10 @@ jobs:
           # 下载发行版附件
           ZIP_NAME=$(ls *.zip 2>/dev/null || echo "")
           if [ -n "$ZIP_NAME" ]; then
+            echo "Found zip file: ${ZIP_NAME}, creating release on Gitee..."
+            
             # 使用 Gitee API 创建发行版
-            curl -X POST \
+            release_response=$(curl -X POST \
               -H "Content-Type: application/json" \
               -H "Authorization: token $GITEE_TOKEN" \
               "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases" \
@@ -147,14 +148,27 @@ jobs:
                 "name": "Release '"${TAG_NAME}"'",
                 "body": "Magisk Module Release '"${TAG_NAME}"'",
                 "prerelease": false
-              }'
+              }')
+            
+            echo "Release creation response: ${release_response}"
             
             # 上传发行版附件
             sleep 2  # 等待发行版创建完成
-            curl -X POST \
+            upload_response=$(curl -X POST \
               -H "Content-Type: multipart/form-data" \
               -H "Authorization: token $GITEE_TOKEN" \
               -F "access_token=${GITEE_TOKEN}" \
               -F "file=@${ZIP_NAME}" \
-              "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases/${TAG_NAME}/attach_files"
+              "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases/${TAG_NAME}/attach_files")
+            
+            echo "Upload response: ${upload_response}"
+            
+            if [[ "$upload_response" == *"success"* ]] || [[ "$upload_response" == *"created"* ]]; then
+              echo "Successfully uploaded: $ZIP_NAME"
+            else
+              echo "Failed to upload $ZIP_NAME. Response: $upload_response"
+              exit 1
+            fi
+          else
+            echo "No zip file found, skipping release creation"
           fi
