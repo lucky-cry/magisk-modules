@@ -272,11 +272,11 @@ server() {
 case "$N" in
 	"2")
 		SERVER="GitHub"
-		URL="https://raw.githubusercontent.com/lucky-cry/MMPack/modules/Hcfile_sharing"
+		URL="https://raw.githubusercontent.com/lucky-cry/magisk-modules/refs/heads/Hcfile_sharing"
 		;;
 	"1")
 		SERVER="Gitee"
-		URL="https://gitee.com/lucky__cat/MMPack/raw/modules/Hcfile_sharing"
+		URL="https://gitee.com/lucky__cat/magisk-modules/raw/Hcfile_sharing"
 		;;
 	esac
 }
