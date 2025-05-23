@@ -1,4 +1,4 @@
-name: Mirror to Gitee
+name: Sync to Gitee
 
 on:
   push:
@@ -7,13 +7,24 @@ on:
   workflow_dispatch:
 
 jobs:
-  mirror:
+  sync:
     runs-on: ubuntu-latest
     steps:
-      - name: Mirror to Gitee
-        uses: Yikun/hub-mirror-action@v1.5
+      - name: Checkout code
+        uses: actions/checkout@v3
         with:
-          src: github/lucky-cry/magisk-modules
-          dst: gitee/lucky__cat/magisk-modules
-          dst_token: ${{ secrets.GITEE_TOKEN }}
-          force_update: true 
+          fetch-depth: 0
+
+      - name: Fetch all branches
+        run: git fetch --all
+
+      - name: Mirror to Gitee
+        env:
+          GITEE_USER: lucky__cat  # 你的 Gitee 用户名
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+        run: |
+          git config --global user.name "${GITEE_USER}"
+          git config --global user.email "${GITEE_USER}@users.noreply.github.com"
+          git remote add gitee https://${GITEE_USER}:${GITEE_TOKEN}@gitee.com/${GITEE_USER}/magisk-modules.git
+          git push gitee --all --force
+          git push gitee --tags --force 
