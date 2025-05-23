@@ -90,16 +90,8 @@ jobs:
               fi
             done
             
-            # 无论是否有资产，都下载源代码压缩包
-            echo "Downloading source code archives..."
-            if [ -n "$(echo "$release" | jq -r '.zipball_url')" ]; then
-              curl -L -H "Authorization: token $GH_TOKEN" -o "${RELEASE_TAG}.zip" "$(echo "$release" | jq -r '.zipball_url')"
-              echo "Downloaded: ${RELEASE_TAG}.zip"
-            fi
-            if [ -n "$(echo "$release" | jq -r '.tarball_url')" ]; then
-              curl -L -H "Authorization: token $GH_TOKEN" -o "${RELEASE_TAG}.tar.gz" "$(echo "$release" | jq -r '.tarball_url')"
-              echo "Downloaded: ${RELEASE_TAG}.tar.gz"
-            fi
+            # 不再下载源代码压缩包
+            echo "Skipping source code archives download"
             
             # 列出下载的所有文件
             echo "Downloaded files:"
