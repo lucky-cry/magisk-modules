@@ -15,8 +15,6 @@ on:
       - 'uninstall.sh'
   release:
     types: [published, created, edited]
-    branches:
-      - '*'
   workflow_dispatch:
 
 jobs:
@@ -162,7 +160,8 @@ jobs:
               "tag_name": "'"${RELEASE_TAG}"'",
               "name": "'"${RELEASE_NAME}"'",
               "body": "'"${RELEASE_BODY}"'",
-              "prerelease": false
+              "prerelease": false,
+              "target_commitish": "'$(git rev-parse HEAD)'"
             }'
           
           # 上传发行版附件

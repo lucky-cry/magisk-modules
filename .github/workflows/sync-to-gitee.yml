@@ -87,7 +87,7 @@ jobs:
             echo "Creating Gitee release: $RELEASE_TAG"
             response=$(curl -s -X POST \
               -H "Content-Type: application/json;charset=UTF-8" \
-              -d "{\"access_token\":\"${GITEE_TOKEN}\",\"tag_name\":\"${RELEASE_TAG}\",\"name\":\"${RELEASE_NAME}\",\"body\":\"${RELEASE_BODY}\",\"prerelease\":false}" \
+              -d "{\"access_token\":\"${GITEE_TOKEN}\",\"tag_name\":\"${RELEASE_TAG}\",\"name\":\"${RELEASE_NAME}\",\"body\":\"${RELEASE_BODY}\",\"prerelease\":false,\"target_commitish\":\"$(git rev-parse HEAD)\"}" \
               "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases")
             
             echo "Release creation response: $response"
@@ -147,7 +147,7 @@ jobs:
           echo "Creating Gitee release..."
           response=$(curl -s -X POST \
             -H "Content-Type: application/json;charset=UTF-8" \
-            -d "{\"access_token\":\"${GITEE_TOKEN}\",\"tag_name\":\"${RELEASE_TAG}\",\"name\":\"${RELEASE_NAME}\",\"body\":\"${RELEASE_BODY}\",\"prerelease\":false}" \
+            -d "{\"access_token\":\"${GITEE_TOKEN}\",\"tag_name\":\"${RELEASE_TAG}\",\"name\":\"${RELEASE_NAME}\",\"body\":\"${RELEASE_BODY}\",\"prerelease\":false,\"target_commitish\":\"$(git rev-parse HEAD)\"}" \
             "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases")
           
           echo "Release creation response: $response"
