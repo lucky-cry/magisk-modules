@@ -1,31 +1,15 @@
-name: Build Magisk Module
+name: Sync to Gitee
 
 on:
   push:
     branches:
       - '*'
-      - '!main'
-    paths:
-      - 'module.prop'
-      - 'META-INF/**'
-      - 'system/**'
-      - 'customize.sh'
-      - 'service.sh'
-      - 'post-fs-data.sh'
-      - 'uninstall.sh'
   release:
-    types: [published, created, edited]  # 移除 branches 过滤器
+    types: [published, created, edited]
   workflow_dispatch:
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      # ... 保持 build 任务不变 ...
-
   sync:
-    needs: build  # 添加任务依赖，确保在 build 之后运行
-    if: github.event_name == 'release' || github.event_name == 'push'  # 只在 release 或 push 时运行
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -44,7 +28,7 @@ jobs:
       - name: Fetch all branches and tags
         run: |
           git remote set-branches origin '*'
-          git fetch origin --tags
+          git fetch origin --tags --force
           echo "Current branches:"
           git branch -a
 
@@ -57,10 +41,9 @@ jobs:
           git remote add gitee https://${GITEE_USER}:${GITEE_TOKEN}@gitee.com/${GITEE_USER}/magisk-modules.git
           
           # 推送所有分支到 Gitee
-          git branch -r | grep -v '\->' | while read remote; do
-              branch="${remote#origin/}"
-              git branch --track "${branch}" "$remote" 2>/dev/null || true
-              git push gitee "${branch}" --force
+          for branch in $(git branch -r | grep -v '\->' | sed 's/origin\///'); do
+            git checkout -b $branch origin/$branch || git checkout $branch
+            git push gitee $branch --force
           done
           
           # 推送所有标签
@@ -91,23 +74,18 @@ jobs:
           
           # 创建 Gitee 发行版
           echo "Creating Gitee release..."
-          curl -X POST \
+          curl --fail -X POST \
             -H "Content-Type: application/json" \
             -H "Authorization: token $GITEE_TOKEN" \
             "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases" \
-            -d '{
-              "tag_name": "'"${RELEASE_TAG}"'",
-              "name": "'"${RELEASE_NAME}"'",
-              "body": "'"${RELEASE_BODY}"'",
-              "prerelease": false
-            }'
+            -d "{\"tag_name\":\"${RELEASE_TAG}\",\"name\":\"${RELEASE_NAME}\",\"body\":\"${RELEASE_BODY}\",\"prerelease\":false}"
           
           # 上传附件
           echo "Uploading assets..."
           for file in *; do
             if [ -f "$file" ]; then
               echo "Uploading: $file"
-              curl -X POST \
+              curl --fail -X POST \
                 -H "Authorization: token $GITEE_TOKEN" \
                 -F "access_token=$GITEE_TOKEN" \
                 -F "file=@$file" \
