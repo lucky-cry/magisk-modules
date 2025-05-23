@@ -38,9 +38,11 @@ jobs:
           # 添加 Gitee remote
           git remote add gitee https://${GITEE_USER}:${GITEE_TOKEN}@gitee.com/${GITEE_USER}/magisk-modules.git
           
-          # 推送所有分支（排除 HEAD）到 Gitee
-          for branch in $(git for-each-ref --format='%(refname:short)' refs/remotes/origin/ | grep -v 'HEAD'); do
-            git push gitee $branch:${branch#origin/} --force
+          # 推送所有分支到 Gitee
+          git branch -r | grep -v '\->' | while read remote; do
+              branch="${remote#origin/}"
+              git branch --track "${branch}" "$remote" 2>/dev/null || true
+              git push gitee "${branch}" --force
           done
           
           # 推送所有标签
