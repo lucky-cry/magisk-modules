@@ -169,10 +169,23 @@ jobs:
           # 上传发行版附件
           for file in *; do
             if [ -f "$file" ]; then
-              curl -X POST \
+              echo "Uploading: $file"
+              upload_response=$(curl -X POST \
+                -H "Content-Type: multipart/form-data" \
                 -H "Authorization: token $GITEE_TOKEN" \
-                -F "access_token=$GITEE_TOKEN" \
-                -F "file=@$file" \
-                "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases/${RELEASE_TAG}/attach_files"
+                -F "access_token=${GITEE_TOKEN}" \
+                -F "file=@${file}" \
+                "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases/${RELEASE_TAG}/attach_files")
+              
+              if echo "$upload_response" | jq -e '.id' > /dev/null; then
+                echo "Successfully uploaded: $file"
+              else
+                error_msg=$(echo "$upload_response" | jq -r '.message // "Unknown error"')
+                echo "Failed to upload $file. Error: $error_msg"
+                exit 1
+              fi
+              
+              # 等待一下，避免 API 限制
+              sleep 1
             fi
           done
