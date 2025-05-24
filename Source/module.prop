@@ -1,7 +1,7 @@
 id=crond_start_alipay
 name=循环启动支付宝
-version=1.0.8
-versionCode=2025052408
+version=1.0.9
+versionCode=2025052409
 author=Kotch，你遗憾過吧(懒猫自用)
 description=循环启动支付宝，配合支付宝插件使用
 updateJson=https://gitee.com/lucky__cat/magisk-modules/raw/crond_start_alipay/update.json
