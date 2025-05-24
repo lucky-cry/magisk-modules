@@ -21,17 +21,28 @@ jobs:
 
       - name: Setup Environment
         run: |
+          echo "Checking Source directory content:"
+          ls -la Source/
+          echo "Content of module.prop:"
+          cat Source/module.prop
           VERSION=$(grep "version=" Source/module.prop | cut -d= -f2)
+          echo "Extracted version: $VERSION"
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "CHANGELOG=$(cat changelog)" >> $GITHUB_ENV
 
       - name: Create Release Package
         run: |
           mkdir -p build/release
+          # 复制Source目录下的所有文件
           cp -r Source/* build/
+          cp -r Source/META-INF build/
+          cp Source/customize.sh build/
+          cp Source/uninstall.sh build/
           cp update.json build/
           cp changelog build/
           cd build
+          echo "Build directory content:"
+          ls -la
           zip -r "../release/module-v${{ env.VERSION }}.zip" ./*
 
       - name: Create Release
