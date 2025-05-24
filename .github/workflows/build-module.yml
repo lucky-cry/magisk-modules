@@ -21,7 +21,7 @@ jobs:
 
       - name: Setup Environment
         run: |
-          VERSION=$(grep "version=" module.prop | cut -d= -f2)
+          VERSION=$(grep "version=" Source/module.prop | cut -d= -f2)
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "CHANGELOG=$(cat changelog)" >> $GITHUB_ENV
 
@@ -29,10 +29,6 @@ jobs:
         run: |
           mkdir -p build/release
           cp -r Source/* build/
-          cp -r META-INF build/
-          cp module.prop build/
-          cp install.sh build/
-          cp uninstall.sh build/
           cp update.json build/
           cp changelog build/
           cd build
