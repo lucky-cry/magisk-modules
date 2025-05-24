@@ -37,11 +37,10 @@ jobs:
           echo "repo_name=$REPO_NAME" >> $GITHUB_OUTPUT
           
           # 处理changelog
-          CHANGELOG=$(cat changelog)
-          CHANGELOG="${CHANGELOG//'%'/'%25'}"
-          CHANGELOG="${CHANGELOG//$'\n'/'%0A'}"
-          CHANGELOG="${CHANGELOG//$'\r'/'%0D'}"
-          echo "changelog=$CHANGELOG" >> $GITHUB_OUTPUT
+          VERSION_TITLE="v${MODULE_VERSION}"
+          CHANGELOG_CONTENT=$(cat changelog)
+          RELEASE_BODY="${VERSION_TITLE}%0A${CHANGELOG_CONTENT}"
+          echo "release_body=${RELEASE_BODY}" >> $GITHUB_OUTPUT
 
       - name: Update updateJson in module.prop
         run: |
@@ -81,8 +80,16 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ steps.module_info.outputs.module_version }}
-          name: ${{ steps.module_info.outputs.module_name }} v${{ steps.module_info.outputs.module_version }}
-          body: ${{ steps.module_info.outputs.changelog }}
+          name: 循环启动支付宝 v${{ steps.module_info.outputs.module_version }} 
+          body: |
+            ### 最新发行版
+            
+            v${{ steps.module_info.outputs.module_version }}%0A- 优化模块结构%0A- 更新目录组织方式%0A- 保持原有功能不变
+            
+            ### 资源
+            - 📦 模块安装包
+            - 📄 更新日志
+            - 🔄 自动更新支持
           files: release/${{ steps.build.outputs.zip_name }}
           draft: false
           prerelease: false
