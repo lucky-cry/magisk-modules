@@ -10,8 +10,8 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - name: Sleep for 30 seconds
-        run: sleep 30
+      - name: Sleep for 60 seconds
+        run: sleep 60
         
       - name: Checkout code
         uses: actions/checkout@v3
