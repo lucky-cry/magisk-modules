@@ -150,8 +150,8 @@ echolog "———————————————————————�
  Hchai - 目录定向挂载 在线脚本
    $ONLINENAME ($ONLINEVERSION)
 ———————————————————————————————
-       作者：时雨🌌星空
-
+		作者：时雨🌌星空
+		二改：帅气的小懒猫
 - 正在检查更新"
 abort() {
 	echolog "
@@ -209,60 +209,60 @@ abort_module_update() {
 download_module() {
   server
 	echolog "
-  正在从 $SERVER 服务器 下载版本信息"
-	eval geturl "$URL/version" >>"$ANDROIDH/在线规则日志.log" 2>&1 || abort_module_update "下载失败"
+  正在从 $SERVER 服务器 下载模块版本信息"
+	eval geturl "$URL/version" >>"$ANDROIDH/在线规则日志.log" 2>&1 || abort_module_update "模块版本信息下载失败"
 	NEW="$(sed -n s/^version=//p version)"
 	NEWNAME="$(sed -n s/^name=//p version)"
 	rm -rf version
-	[ -n "$NEW" ] && [ -n "$NEWNAME" ] || abort_module_update "下载文件版本信息缺失"
+	[ -n "$NEW" ] && [ -n "$NEWNAME" ] || abort_module_update "下载模块文件版本信息缺失"
 	VERSION="$(sed -n s/^versionCode=//p "$MODDIR/module.prop")"
 	NAME="$(sed -n s/^version=//p "$MODDIR/module.prop")"
 	echolog "
-  当前版本号：$VERSION
-  最新版本号：$NEW"
+  当前模块版本号：$VERSION
+  最新模块版本号：$NEW"
 	if [ "$VERSION" -lt "$NEW" ]; then
 		echolog "
-  发现新版本：$NEWNAME
+  发现模块新版本：$NEWNAME
 
-  开始下载更新"
-		eval geturl "$URL/install.sh" >>"$ANDROIDH/在线规则日志.log" 2>&1 || abort_module_update "下载失败"
+  开始下载模块更新"
+		eval geturl "$URL/install.sh" >>"$ANDROIDH/在线规则日志.log" 2>&1 || abort_module_update "模块下载失败"
 		echolog "
 - 模块下载完成，开始安装"
 		sh "install.sh" >> "$ANDROIDH/在线规则日志.log" 2>&1
     offline
 	else
 		echolog "
-  当前版本：$NAME 已是最新"
+  当前模块版本：$NAME 已是最新"
 		offline
 	fi
 }
 download() {
 	server
 	echolog "
-  正在从 $SERVER 服务器 下载版本信息"
-	eval geturl "$URL/Online/version" >>"$ANDROIDH/在线规则日志.log" 2>&1 || abort_update "下载失败"
+  正在从 $SERVER 服务器 下载规则版本信息"
+	eval geturl "$URL/Online/version" >>"$ANDROIDH/在线规则日志.log" 2>&1 || abort_update "规则版本信息下载失败"
 	NEW="$(sed -n s/^version=//p version)"
 	NEWNAME="$(sed -n s/^name=//p version)"
 	rm -rf version
-	[ -n "$NEW" ] && [ -n "$NEWNAME" ] || abort_update "下载文件版本信息缺失"
+	[ -n "$NEW" ] && [ -n "$NEWNAME" ] || abort_update "下载规则文件版本信息缺失"
 	echolog "
-  当前版本号：$ONLINEVERSION
-  最新版本号：$NEW"
+  当前规则版本号：$ONLINEVERSION
+  最新规则版本号：$NEW"
 	if [ "$ONLINEVERSION" -lt "$NEW" ]; then
 		echolog "
-  发现新版本：$NEWNAME
+  发现规则新版本：$NEWNAME
 
-  开始下载更新"
-		eval geturl "$URL/Online/Online.sh" >>"$ANDROIDH/在线规则日志.log" 2>&1 || abort_update "下载失败"
+  开始下载规则更新"
+		eval geturl "$URL/Online/Online.sh" >>"$ANDROIDH/在线规则日志.log" 2>&1 || abort_update "规则下载失败"
 		echolog "
-- 脚本更新完成，开始执行"
+- 规则更新完成，开始执行"
 		mv "$FILE" "$FILE.bak"
 		mv "Online.sh" "$FILE"
 		. "$FILE"
 		exit
 	else
 		echolog "
-  当前版本：$ONLINENAME 已是最新
+  当前规则版本：$ONLINENAME 已是最新
 
 - 正在检查模块更新"
 		download_module
