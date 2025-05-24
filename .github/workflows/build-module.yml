@@ -36,11 +36,11 @@ jobs:
           echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
           echo "repo_name=$REPO_NAME" >> $GITHUB_OUTPUT
           
-          # 处理changelog
-          VERSION_TITLE="v${MODULE_VERSION}"
-          CHANGELOG_CONTENT=$(cat changelog)
-          RELEASE_BODY="${VERSION_TITLE}%0A${CHANGELOG_CONTENT}"
-          echo "release_body=${RELEASE_BODY}" >> $GITHUB_OUTPUT
+          # 获取changelog内容并处理格式
+          CHANGELOG_CONTENT=$(cat changelog | sed 's/^/            /')
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG_CONTENT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Update updateJson in module.prop
         run: |
@@ -84,7 +84,10 @@ jobs:
           body: |
             ### 最新发行版
             
-            v${{ steps.module_info.outputs.module_version }}%0A- 优化模块结构%0A- 更新目录组织方式%0A- 保持原有功能不变
+            v${{ steps.module_info.outputs.module_version }}
+            
+            ### 更新内容
+            ${{ steps.module_info.outputs.changelog }}
             
             ### 资源
             - 📦 模块安装包
