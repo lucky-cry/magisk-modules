@@ -82,10 +82,6 @@ jobs:
           tag_name: v${{ steps.module_info.outputs.module_version }}
           name: 循环启动支付宝 v${{ steps.module_info.outputs.module_version }} 
           body: |
-            ### 最新发行版
-            
-            v${{ steps.module_info.outputs.module_version }}
-            
             ### 更新内容
             ${{ steps.module_info.outputs.changelog }}
             
