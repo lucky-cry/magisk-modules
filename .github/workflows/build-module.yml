@@ -1,89 +1,61 @@
-name: Build Magisk Module
+name: Build Module
 
 on:
   push:
-    branches:
-      - '*'
-      - '!main'
-    paths:
-      - 'module.prop'
-      - 'META-INF/**'
-      - 'system/**'
-      - 'customize.sh'
-      - 'service.sh'
-      - 'post-fs-data.sh'
-      - 'uninstall.sh'
+    branches: [ crond_start_alipay ]
+    paths-ignore:
+      - '**.md'
+      - '.github/**'
+  pull_request:
+    branches: [ crond_start_alipay ]
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
-      - name: Get module info
-        id: module_info
+      - name: Setup Environment
         run: |
-          MODULE_ID=$(grep -oP 'id=\K.*' module.prop)
-          MODULE_NAME=$(grep -oP 'name=\K.*' module.prop)
-          MODULE_VERSION=$(grep -oP 'version=\K.*' module.prop)
-          MODULE_VERSIONCODE=$(grep -oP 'versionCode=\K.*' module.prop)
-          BRANCH_NAME=${GITHUB_REF#refs/heads/}
-          
-          echo "module_id=$MODULE_ID" >> $GITHUB_OUTPUT
-          echo "module_name=$MODULE_NAME" >> $GITHUB_OUTPUT
-          echo "module_version=$MODULE_VERSION" >> $GITHUB_OUTPUT
-          echo "module_versioncode=$MODULE_VERSIONCODE" >> $GITHUB_OUTPUT
-          echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+          echo "VERSION=$(cat version)" >> $GITHUB_ENV
+          echo "CHANGELOG=$(cat changelog)" >> $GITHUB_ENV
 
-      - name: Build module zip
-        id: build
+      - name: Create Release Package
         run: |
-          MODULE_ID=${{ steps.module_info.outputs.module_id }}
-          MODULE_VERSION=${{ steps.module_info.outputs.module_version }}
-          BRANCH_NAME=${{ steps.module_info.outputs.branch_name }}
-          
-          ZIP_NAME="${MODULE_ID}-${MODULE_VERSION}.zip"
-          
-          # Create zip file
-          zip -r "$ZIP_NAME" . -x ".git/*" ".github/*" "README.md"
-          
-          echo "zip_name=$ZIP_NAME" >> $GITHUB_OUTPUT
+          mkdir -p build/release
+          cp -r Source/* build/
+          cp -r META-INF build/
+          cp module.prop build/
+          cp install.sh build/
+          cp uninstall.sh build/
+          cp version build/
+          cp changelog build/
+          cd build
+          zip -r "../release/module-v${{ env.VERSION }}.zip" ./*
 
       - name: Create Release
-        id: create_release
+        if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ steps.module_info.outputs.branch_name }}-v${{ steps.module_info.outputs.module_version }}
-          name: ${{ steps.module_info.outputs.module_name }} v${{ steps.module_info.outputs.module_version }}
-          files: ${{ steps.build.outputs.zip_name }}
+          tag_name: v${{ env.VERSION }}
+          name: 循环启动支付宝 v${{ env.VERSION }}
+          body: ${{ env.CHANGELOG }}
+          files: release/module-v${{ env.VERSION }}.zip
           draft: false
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Update update.json
+      - name: Update Online Files
+        if: github.event_name != 'pull_request'
         run: |
-          MODULE_VERSION=${{ steps.module_info.outputs.module_version }}
-          MODULE_VERSIONCODE=${{ steps.module_info.outputs.module_versioncode }}
-          BRANCH_NAME=${{ steps.module_info.outputs.branch_name }}
-          RELEASE_URL=${{ steps.create_release.outputs.upload_url }}
-          RELEASE_URL=${RELEASE_URL%\{*}
-          
-          # Create or update update.json
-          cat > update.json << EOF
-          {
-            "version": "${MODULE_VERSION}",
-            "versionCode": ${MODULE_VERSIONCODE},
-            "zipUrl": "${RELEASE_URL%\?*}/${{ steps.build.outputs.zip_name }}",
-            "changelog": "https://github.com/${{ github.repository }}/releases/tag/${BRANCH_NAME}-v${MODULE_VERSION}"
-          }
-          EOF
-          
-          # Commit and push update.json to main branch
+          cp update.json Online/
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
-          git add update.json
-          git commit -m "Update module to v${MODULE_VERSION} (${MODULE_VERSIONCODE})"
-          git push origin HEAD:${BRANCH_NAME}
+          git add Online/
+          git commit -m "Update online files for v${{ env.VERSION }}"
+          git push 
