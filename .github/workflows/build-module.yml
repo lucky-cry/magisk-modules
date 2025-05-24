@@ -89,10 +89,6 @@ jobs:
             ### 更新内容
             ${{ steps.module_info.outputs.changelog }}
             
-            ### 资源
-            - 📦 模块安装包
-            - 📄 更新日志
-            - 🔄 自动更新支持
           files: release/${{ steps.build.outputs.zip_name }}
           draft: false
           prerelease: false
