@@ -34,18 +34,27 @@ jobs:
 
       - name: Create Release Package
         run: |
-          mkdir -p build/release
-          # 复制Source目录下的所有文件
-          cp -r Source/* build/
-          cp -r Source/META-INF build/
-          cp Source/customize.sh build/
-          cp Source/uninstall.sh build/
-          cp update.json build/
-          cp changelog build/
-          cd build
+          # 创建构建目录
+          mkdir -p release
+          mkdir -p temp_build
+          
+          # 复制文件到临时构建目录
+          cp -r Source/* temp_build/
+          cp update.json temp_build/
+          cp changelog temp_build/
+          
+          # 显示构建目录内容
           echo "Build directory content:"
-          ls -la
+          ls -la temp_build/
+          
+          # 创建zip包
+          cd temp_build
           zip -r "../release/module-v${{ env.VERSION }}.zip" ./*
+          cd ..
+          
+          # 显示release目录内容
+          echo "Release directory content:"
+          ls -la release/
 
       - name: Create Release
         if: github.event_name != 'pull_request'
