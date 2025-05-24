@@ -67,14 +67,4 @@ jobs:
           draft: false
           prerelease: false
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Update Online Files
-        if: github.event_name != 'pull_request'
-        run: |
-          cp update.json Online/
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
-          git add Online/
-          git commit -m "Update online files for v${{ env.VERSION }}"
-          git push 
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
