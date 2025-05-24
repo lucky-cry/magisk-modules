@@ -25,10 +25,12 @@ jobs:
           ls -la Source/
           echo "Content of module.prop:"
           cat Source/module.prop
-          VERSION=$(grep "version=" Source/module.prop | cut -d= -f2)
+          VERSION=$(grep "version=" Source/module.prop | cut -d= -f2 | tr -d '\r')
           echo "Extracted version: $VERSION"
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "CHANGELOG=$(cat changelog)" >> $GITHUB_ENV
+          # 将changelog内容转换为JSON格式的字符串
+          CHANGELOG=$(cat changelog | jq -Rs .)
+          echo "CHANGELOG=$CHANGELOG" >> $GITHUB_ENV
 
       - name: Create Release Package
         run: |
@@ -51,7 +53,7 @@ jobs:
         with:
           tag_name: v${{ env.VERSION }}
           name: 循环启动支付宝 v${{ env.VERSION }}
-          body: ${{ env.CHANGELOG }}
+          body: ${{ fromJson(env.CHANGELOG) }}
           files: release/module-v${{ env.VERSION }}.zip
           draft: false
           prerelease: false
