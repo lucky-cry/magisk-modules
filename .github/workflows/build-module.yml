@@ -35,6 +35,13 @@ jobs:
           echo "module_versioncode=$MODULE_VERSIONCODE" >> $GITHUB_OUTPUT
           echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
           echo "repo_name=$REPO_NAME" >> $GITHUB_OUTPUT
+          
+          # 处理changelog
+          CHANGELOG=$(cat changelog)
+          CHANGELOG="${CHANGELOG//'%'/'%25'}"
+          CHANGELOG="${CHANGELOG//$'\n'/'%0A'}"
+          CHANGELOG="${CHANGELOG//$'\r'/'%0D'}"
+          echo "changelog=$CHANGELOG" >> $GITHUB_OUTPUT
 
       - name: Update updateJson in module.prop
         run: |
@@ -75,7 +82,7 @@ jobs:
         with:
           tag_name: v${{ steps.module_info.outputs.module_version }}
           name: ${{ steps.module_info.outputs.module_name }} v${{ steps.module_info.outputs.module_version }}
-          body: ${{ fromJson(env.CHANGELOG) }}
+          body: ${{ steps.module_info.outputs.changelog }}
           files: release/${{ steps.build.outputs.zip_name }}
           draft: false
           prerelease: false
@@ -93,14 +100,12 @@ jobs:
           CHANGELOG_URL="https://gitee.com/lucky__cat/magisk-modules/raw/crond_start_alipay/changelog"
           
           # 创建或更新 update.json
-          cat > update.json << EOF
-          {
-            "version": "${MODULE_VERSION}",
-            "versionCode": ${MODULE_VERSIONCODE},
-            "zipUrl": "https://gitee.com/lucky__cat/magisk-modules/releases/download/v${MODULE_VERSION}/${ZIP_NAME}",
-            "changelog": "${CHANGELOG_URL}"
-          }
-          EOF
+          echo '{' > update.json
+          echo '  "version": "'${MODULE_VERSION}'",' >> update.json
+          echo '  "versionCode": '${MODULE_VERSIONCODE}',' >> update.json
+          echo '  "zipUrl": "https://gitee.com/lucky__cat/magisk-modules/releases/download/v'${MODULE_VERSION}'/'${ZIP_NAME}'",' >> update.json
+          echo '  "changelog": "'${CHANGELOG_URL}'"' >> update.json
+          echo '}' >> update.json
           
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
