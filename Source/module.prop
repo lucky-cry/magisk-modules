@@ -1,7 +1,7 @@
 id=crond_clear_the_blacklist
 name= A-循环清理黑名单列表
-version=1.0.1
-versionCode=2025060301
+version=1.0.2
+versionCode=2025060302
 author=Kotch,你遗憾過吧,懒猫
 updateJson=https://gitee.com/lucky__cat/magisk-modules/raw/crond_clear_the_blacklist/update.json
 description=CROND: [ 等待刷新.. ]
