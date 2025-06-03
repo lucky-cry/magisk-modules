@@ -1,7 +1,7 @@
 id=BATTERYOPT
 name=电池优化
-version=1.0.3
-versionCode=2025060303
+version=1.0.4
+versionCode=2025060304
 author=染崎枫&小懒猫
 description=白名单：/sdcard/Android/BATTERYOPT/电池优化白名单.prop
 updateJson=https://gitee.com/lucky__cat/magisk-modules/raw/Battery_whitelist/update.json
