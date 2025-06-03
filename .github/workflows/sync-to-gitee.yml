@@ -3,7 +3,7 @@ name: Sync to Gitee
 on:
   push:
     branches:
-      - Battery_whitelist
+      - crond_clear_the_blacklist
   release:
     types: [published]
   workflow_dispatch:

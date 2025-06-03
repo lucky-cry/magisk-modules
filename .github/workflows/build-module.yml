@@ -46,7 +46,7 @@ jobs:
         run: |
           REPO_NAME=${{ steps.module_info.outputs.repo_name }}
           BRANCH_NAME=${{ steps.module_info.outputs.branch_name }}
-          sed -i "s|updateJson=.*|updateJson=https://gitee.com/lucky__cat/magisk-modules/raw/Battery_whitelist/update.json|g" Source/module.prop
+          sed -i "s|updateJson=.*|updateJson=https://gitee.com/lucky__cat/magisk-modules/raw/crond_clear_the_blacklist/update.json|g" Source/module.prop
 
       - name: Build module zip
         id: build
@@ -102,7 +102,7 @@ jobs:
           echo "version=${MODULE_VERSIONCODE}" >> version
           
           # 更新 update.json
-          CHANGELOG_URL="https://gitee.com/lucky__cat/magisk-modules/raw/Battery_whitelist/changelog"
+          CHANGELOG_URL="https://gitee.com/lucky__cat/magisk-modules/raw/crond_clear_the_blacklist/changelog"
           cat > update.json << EOF
           {
             "version": "${MODULE_VERSION}",

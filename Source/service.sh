@@ -1,7 +1,5 @@
-#!/system/bin/sh
+#全局变量
 MODDIR=${0%/*}
-#赋权才能正常运行
-chmod -R 0777 "$MODDIR"
 #等待用户登录
 Wait_until_login() {
   # in case of /data encryption is disabled
@@ -16,13 +14,15 @@ Wait_until_login() {
 }
 Wait_until_login
 
-WHITELIST=/sdcard/Android/BATTERYOPT/电池优化白名单.prop
-
-if [ ! -f $WHITELIST ]; then
-	mkdir /sdcard/Android/BATTERYOPT
-	touch $WHITELIST
-	echo "#加入包名，前面加＋号，如 +com.itisaapp.and" >$WHITELIST
+#赋权才能正常运行
+chmod -R 0777 "$MODDIR"
+#删除历史遗留文件
+if [[ -f "$MODDIR"/script/tmp/Screen_on ]]; then
+  rm -rf "$MODDIR"/script/tmp/Screen_on
 fi
+#注入sh进程
+. "$MODDIR"/script/clear_the_blacklist_functions.sh
+#清空log
+logd_clear "开机启动完成: [service.sh]"
 
-export PATH="/system/bin:/system/xbin:/vendor/bin:$(magisk --path)/.magisk/busybox:$PATH"
-crond -c $MODDIR/cron.d
+sh "$MODDIR"/initial.sh
