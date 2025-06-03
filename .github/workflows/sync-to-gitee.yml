@@ -3,20 +3,29 @@ name: Sync to Gitee
 on:
   push:
     branches:
-      - '*'
+      - Battery_whitelist
   release:
-    types: [published, created, edited]
+    types: [published]
   workflow_dispatch:
 
 jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v2
         with:
           fetch-depth: 0
-          fetch-tags: true
+          
+      - name: Sync to Gitee
+        uses: Yikun/hub-mirror-action@master
+        with:
+          src: github/lucky-cry
+          dst: gitee/lucky__cat
+          dst_key: ${{ secrets.GITEE_PRIVATE_KEY }}
+          dst_token: ${{ secrets.GITEE_TOKEN }}
+          static_list: "magisk-modules"
+          force_update: true
 
       - name: Configure Git
         env:

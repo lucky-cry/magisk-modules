@@ -3,181 +3,58 @@ name: Build Magisk Module
 on:
   push:
     branches:
-      - '*'
-      - '!main'
-  release:
-    types: [published, created, edited]
+      - Battery_whitelist
+    paths:
+      - 'Source/**'
+      - 'version'
+      - 'changelog'
+      - '.github/workflows/build-module.yml'
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Get module info
-        id: module_info
+      - name: Checkout
+        uses: actions/checkout@v2
+        
+      - name: Setup Environment
         run: |
-          MODULE_ID=$(grep -oP 'id=\K.*' module.prop)
-          MODULE_NAME=$(grep -oP 'name=\K.*' module.prop)
-          MODULE_VERSION=$(grep -oP 'version=\K.*' module.prop)
-          MODULE_VERSIONCODE=$(grep -oP 'versionCode=\K.*' module.prop)
-          BRANCH_NAME=${GITHUB_REF#refs/heads/}
+          sudo apt-get update
+          sudo apt-get install -y zip unzip
           
-          echo "module_id=$MODULE_ID" >> $GITHUB_OUTPUT
-          echo "module_name=$MODULE_NAME" >> $GITHUB_OUTPUT
-          echo "module_version=$MODULE_VERSION" >> $GITHUB_OUTPUT
-          echo "module_versioncode=$MODULE_VERSIONCODE" >> $GITHUB_OUTPUT
-          echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
-
-      - name: Build module zip
-        id: build
+      - name: Get Version
+        id: version
         run: |
-          MODULE_ID=${{ steps.module_info.outputs.module_id }}
-          MODULE_VERSION=${{ steps.module_info.outputs.module_version }}
-          BRANCH_NAME=${{ steps.module_info.outputs.branch_name }}
+          echo "VERSION=$(cat version)" >> $GITHUB_ENV
           
-          ZIP_NAME="${MODULE_ID}-${MODULE_VERSION}.zip"
+      - name: Build Module
+        run: |
+          mkdir -p build/BATTERYOPT
+          cp -r Source/* build/BATTERYOPT/
+          cp module.prop build/BATTERYOPT/
+          cd build
+          zip -r BATTERYOPT.zip BATTERYOPT/
           
-          # Create zip file
-          zip -r "$ZIP_NAME" . -x ".git/*" ".github/*" "README.md"
-          
-          echo "zip_name=$ZIP_NAME" >> $GITHUB_OUTPUT
-
       - name: Create Release
         id: create_release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ steps.module_info.outputs.branch_name }}-v${{ steps.module_info.outputs.module_version }}
-          name: ${{ steps.module_info.outputs.module_name }} v${{ steps.module_info.outputs.module_version }}
-          files: ${{ steps.build.outputs.zip_name }}
-          draft: false
-          prerelease: false
+        uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Update update.json
-        run: |
-          MODULE_VERSION=${{ steps.module_info.outputs.module_version }}
-          MODULE_VERSIONCODE=${{ steps.module_info.outputs.module_versioncode }}
-          BRANCH_NAME=${{ steps.module_info.outputs.branch_name }}
-          RELEASE_URL=${{ steps.create_release.outputs.upload_url }}
-          RELEASE_URL=${RELEASE_URL%\{*}
-          
-          # Create or update update.json
-          cat > update.json << EOF
-          {
-            "version": "${MODULE_VERSION}",
-            "versionCode": ${MODULE_VERSIONCODE},
-            "zipUrl": "${RELEASE_URL%\?*}/${{ steps.build.outputs.zip_name }}",
-            "changelog": "https://github.com/${{ github.repository }}/releases/tag/${BRANCH_NAME}-v${MODULE_VERSION}"
-          }
-          EOF
-          
-          # Commit and push update.json to main branch
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
-          git add update.json
-          git commit -m "Update module to v${MODULE_VERSION} (${MODULE_VERSIONCODE})"
-          git push origin HEAD:${BRANCH_NAME}
-
-  sync:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
         with:
-          fetch-depth: 0
-          fetch-tags: true
-
-      - name: Configure Git
+          tag_name: v${{ env.VERSION }}
+          release_name: 电池优化白名单 v${{ env.VERSION }}
+          body_path: changelog
+          draft: false
+          prerelease: false
+          
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
         env:
-          GITEE_USER: lucky__cat
-        run: |
-          git config --global user.name "${GITEE_USER}"
-          git config --global user.email "${GITEE_USER}@users.noreply.github.com"
-
-      - name: Fetch all branches and tags
-        run: |
-          git remote set-branches origin '*'
-          git fetch origin --tags
-          echo "Current branches:"
-          git branch -a
-
-      - name: Push to Gitee
-        env:
-          GITEE_USER: lucky__cat
-          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
-        run: |
-          # 添加 Gitee remote
-          git remote add gitee https://${GITEE_USER}:${GITEE_TOKEN}@gitee.com/${GITEE_USER}/magisk-modules.git
-          
-          # 推送所有分支到 Gitee
-          git branch -r | grep -v '\->' | while read remote; do
-              branch="${remote#origin/}"
-              git branch --track "${branch}" "$remote" 2>/dev/null || true
-              git push gitee "${branch}" --force
-          done
-          
-          # 推送所有标签
-          git push gitee --tags --force
-          
-          echo "Push completed"
-
-      - name: Sync Releases to Gitee
-        if: github.event_name == 'release'
-        env:
-          GITEE_USER: lucky__cat
-          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
-        run: |
-          # 获取最新发行版信息
-          RELEASE_TAG="${{ github.event.release.tag_name }}"
-          RELEASE_NAME="${{ github.event.release.name }}"
-          RELEASE_BODY="${{ github.event.release.body }}"
-          
-          # 下载发行版附件
-          mkdir -p release_assets
-          cd release_assets
-          for asset_url in $(echo "${{ toJson(github.event.release.assets) }}" | jq -r '.[].browser_download_url'); do
-            wget $asset_url
-          done
-          
-          # 使用 Gitee API 创建发行版
-          # 确保描述不为空
-          RELEASE_BODY="${RELEASE_BODY:-"从 GitHub 同步的发行版 ${RELEASE_TAG}"}"
-          curl -X POST \
-            -H "Content-Type: application/json" \
-            -H "Authorization: token $GITEE_TOKEN" \
-            "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases" \
-            -d '{
-              "tag_name": "'"${RELEASE_TAG}"'",
-              "name": "'"${RELEASE_NAME}"'",
-              "body": "'"${RELEASE_BODY}"'",
-              "prerelease": false,
-              "target_commitish": "'$(git rev-parse HEAD)'"
-            }'
-          
-          # 上传发行版附件
-          for file in *; do
-            if [ -f "$file" ]; then
-              echo "Uploading: $file"
-              upload_response=$(curl -X POST \
-                -H "Content-Type: multipart/form-data" \
-                -H "Authorization: token $GITEE_TOKEN" \
-                -F "access_token=${GITEE_TOKEN}" \
-                -F "file=@${file}" \
-                "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases/${RELEASE_TAG}/attach_files")
-              
-              # 检查上传响应
-              if [[ "$upload_response" == *"success"* ]] || [[ "$upload_response" == *"created"* ]]; then
-                echo "Successfully uploaded: $file"
-              else
-                echo "Failed to upload $file. Response: $upload_response"
-                exit 1
-              fi
-              
-              # 等待一下，避免 API 限制
-              sleep 1
-            fi
-          done
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./build/BATTERYOPT.zip
+          asset_name: BATTERYOPT.zip
+          asset_content_type: application/zip

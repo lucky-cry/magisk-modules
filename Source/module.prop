@@ -1,6 +1,6 @@
 id=BATTERYOPT
 name=电池优化
-version=v1.0.1
+version=1.0.1
 versionCode=2025060301
 author=染崎枫&小懒猫
 description=白名单：/sdcard/Android/BATTERYOPT/电池优化白名单.prop
