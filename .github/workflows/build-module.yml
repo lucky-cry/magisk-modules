@@ -3,7 +3,7 @@ name: Build Magisk Module
 on:
   push:
     branches:
-      - '*'
+      - crond_clear_the_blacklist
     paths:
       - 'Source/**'
   workflow_dispatch:
