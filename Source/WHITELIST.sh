@@ -4,6 +4,10 @@ LOG_FILE=/sdcard/Android/BATTERYOPT/battery_opt.log
 # 确保日志目录存在
 mkdir -p /sdcard/Android/BATTERYOPT
 
+# 清理之前的日志文件
+rm -f "$LOG_FILE"
+touch "$LOG_FILE"
+
 # 添加时间戳的日志函数
 log_message() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> "$LOG_FILE"
@@ -33,8 +37,21 @@ if [ -f "$WHITELIST" ]; then
     third_party_apps=$(pm list packages -3 | sed "s/package://g")
     log_detail "已安装的第三方应用列表" "$third_party_apps"
     
-    # 处理白名单
-    whitelist=`pm list packages -3 | sed "s/package:/-/g"`"$whitelist_content"
+    # 处理白名单：先获取所有第三方应用，每个都加上-号
+    base_list=$(pm list packages -3 | sed "s/package:/-/g")
+    
+    # 从白名单内容中提取每个包名并添加+号
+    whitelist_apps=""
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        # 移除可能存在的+号和空格
+        clean_line=$(echo "$line" | sed 's/^[+ ]*//;s/[ ]*$//')
+        if [ ! -z "$clean_line" ]; then
+            whitelist_apps="$whitelist_apps +$clean_line"
+        fi
+    done <<< "$whitelist_content"
+    
+    # 合并基础列表和白名单应用
+    whitelist="$base_list$whitelist_apps"
     log_detail "最终白名单内容" "$whitelist"
     
     log_message "设置电池优化白名单"
