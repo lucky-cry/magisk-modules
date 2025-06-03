@@ -3,58 +3,108 @@ name: Build Magisk Module
 on:
   push:
     branches:
-      - Battery_whitelist
+      - '*'
     paths:
       - 'Source/**'
-      - 'version'
-      - 'changelog'
-      - '.github/workflows/build-module.yml'
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    
     steps:
-      - name: Checkout
-        uses: actions/checkout@v2
-        
-      - name: Setup Environment
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Get module info
+        id: module_info
         run: |
-          sudo apt-get update
-          sudo apt-get install -y zip unzip
+          MODULE_ID=$(grep -oP 'id=\K.*' Source/module.prop)
+          MODULE_NAME=$(grep -oP 'name=\K.*' Source/module.prop)
+          MODULE_VERSION=$(grep -oP 'version=\K.*' Source/module.prop)
+          MODULE_VERSIONCODE=$(grep -oP 'versionCode=\K.*' Source/module.prop)
+          BRANCH_NAME=${GITHUB_REF#refs/heads/}
+          REPO_NAME=${{ github.repository }}
           
-      - name: Get Version
-        id: version
+          echo "module_id=$MODULE_ID" >> $GITHUB_OUTPUT
+          echo "module_name=$MODULE_NAME" >> $GITHUB_OUTPUT
+          echo "module_version=$MODULE_VERSION" >> $GITHUB_OUTPUT
+          echo "module_versioncode=$MODULE_VERSIONCODE" >> $GITHUB_OUTPUT
+          echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+          echo "repo_name=$REPO_NAME" >> $GITHUB_OUTPUT
+
+      - name: Update updateJson in module.prop
         run: |
-          echo "VERSION=$(cat version)" >> $GITHUB_ENV
-          
-      - name: Build Module
+          REPO_NAME=${{ steps.module_info.outputs.repo_name }}
+          BRANCH_NAME=${{ steps.module_info.outputs.branch_name }}
+          sed -i "s|updateJson=.*|updateJson=https://gitee.com/lucky__cat/magisk-modules/raw/Battery_whitelist/update.json|g" Source/module.prop
+
+      - name: Build module zip
+        id: build
         run: |
-          mkdir -p build/BATTERYOPT
-          cp -r Source/* build/BATTERYOPT/
-          cp module.prop build/BATTERYOPT/
-          cd build
-          zip -r BATTERYOPT.zip BATTERYOPT/
+          MODULE_ID=${{ steps.module_info.outputs.module_id }}
+          MODULE_VERSION=${{ steps.module_info.outputs.module_version }}
+          BRANCH_NAME=${{ steps.module_info.outputs.branch_name }}
           
+          ZIP_NAME="${MODULE_ID}-${MODULE_VERSION}.zip"
+          
+          mkdir temp_module
+          cp -r Source/* temp_module/
+          
+          # 进入临时目录打包
+          cd temp_module
+          zip -r "../$ZIP_NAME" ./*
+          cd ..
+          
+          echo "zip_name=$ZIP_NAME" >> $GITHUB_OUTPUT
+
+      - name: Get changelog content
+        id: changelog
+        run: |
+          CHANGELOG_CONTENT=$(cat changelog)
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG_CONTENT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
       - name: Create Release
         id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v1
         with:
-          tag_name: v${{ env.VERSION }}
-          release_name: 电池优化白名单 v${{ env.VERSION }}
-          body_path: changelog
+          tag_name: v${{ steps.module_info.outputs.module_version }}
+          name: ${{ steps.module_info.outputs.module_name }} v${{ steps.module_info.outputs.module_version }}
+          body: ${{ steps.changelog.outputs.changelog }}
+          files: ${{ steps.build.outputs.zip_name }}
           draft: false
           prerelease: false
-          
-      - name: Upload Release Asset
-        uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./build/BATTERYOPT.zip
-          asset_name: BATTERYOPT.zip
-          asset_content_type: application/zip
+
+      - name: Update version and update.json
+        run: |
+          MODULE_VERSION=${{ steps.module_info.outputs.module_version }}
+          MODULE_VERSIONCODE=${{ steps.module_info.outputs.module_versioncode }}
+          REPO_NAME=${{ steps.module_info.outputs.repo_name }}
+          BRANCH_NAME=${{ steps.module_info.outputs.branch_name }}
+          ZIP_NAME=${{ steps.build.outputs.zip_name }}
+          
+          # 更新 version 文件
+          echo "##最新模块版本信息" > version
+          echo "name=v${MODULE_VERSION}($(date +%Y.%m.%d))" >> version
+          echo "version=${MODULE_VERSIONCODE}" >> version
+          
+          # 更新 update.json
+          CHANGELOG_URL="https://gitee.com/lucky__cat/magisk-modules/raw/Battery_whitelist/changelog"
+          cat > update.json << EOF
+          {
+            "version": "${MODULE_VERSION}",
+            "versionCode": ${MODULE_VERSIONCODE},
+            "zipUrl": "https://gitee.com/lucky__cat/magisk-modules/releases/download/v${MODULE_VERSION}/${ZIP_NAME}",
+            "changelog": "${CHANGELOG_URL}"
+          }
+          EOF
+          
+          # 提交更改
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git add update.json Source/module.prop version
+          git commit -m "Update module to v${MODULE_VERSION} (${MODULE_VERSIONCODE})"
+          git push origin ${BRANCH_NAME}
