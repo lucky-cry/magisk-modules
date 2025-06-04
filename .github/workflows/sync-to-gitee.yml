@@ -118,13 +118,14 @@ jobs:
           
           # 获取最新的 release tag
           LATEST_TAG=$(git describe --tags --abbrev=0)
+          VERSION=$(grep 'version=' Source/module.prop | cut -d= -f2)
           
           # 更新 update.json 文件
           cat > update.json << EOF
           {
             "version": "$(grep 'version=' Source/module.prop | cut -d= -f2)",
             "versionCode": $(grep 'versionCode=' Source/module.prop | cut -d= -f2),
-            "zipUrl": "https://github.com/lucky-cry/magisk-modules/releases/download/${LATEST_TAG}/Hcfile_sharing-$(grep 'version=' Source/module.prop | cut -d= -f2).zip",
+            "zipUrl": "https://github.com/lucky-cry/magisk-modules/releases/download/v${VERSION}/Hcfile_sharing-${VERSION}.zip",
             "changelog": "https://raw.githubusercontent.com/lucky-cry/magisk-modules/Hcfile_sharing/changelog"
           }
           EOF
