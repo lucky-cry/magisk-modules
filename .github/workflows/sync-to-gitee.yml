@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - Battery_whitelist
+    paths-ignore:
+      - 'update.json'
   release:
     types: [published]
   workflow_dispatch:
