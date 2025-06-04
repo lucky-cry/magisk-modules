@@ -108,4 +108,27 @@ jobs:
           
           cd ..
           rm -rf "release_assets"
-          echo "Completed release sync" 
+          echo "Completed release sync"
+
+      - name: Update JSON URLs
+        run: |
+          # 确保在正确的分支上
+          git checkout Hcfile_sharing
+          
+          # 获取最新的 release tag
+          LATEST_TAG=$(git describe --tags --abbrev=0)
+          
+          # 更新 update.json 文件
+          cat > update.json << EOF
+          {
+            "version": "$(grep 'version=' Source/module.prop | cut -d= -f2)",
+            "versionCode": $(grep 'versionCode=' Source/module.prop | cut -d= -f2),
+            "zipUrl": "https://github.com/${{ github.repository }}/releases/download/${LATEST_TAG}/Hcfile_sharing-$(grep 'version=' Source/module.prop | cut -d= -f2).zip",
+            "changelog": "https://raw.githubusercontent.com/${{ github.repository }}/Hcfile_sharing/changelog"
+          }
+          EOF
+          
+          # 提交更改
+          git add update.json
+          git commit -m "Update URLs to GitHub links"
+          git push origin Hcfile_sharing
