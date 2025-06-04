@@ -172,3 +172,33 @@ jobs:
           cd ..
           rm -rf "release_assets"
           echo "Completed release sync" 
+
+      - name: Update JSON URLs
+        run: |
+          # 确保在正确的分支上并更新本地分支
+          git checkout crond_clear_the_blacklist
+          git pull origin crond_clear_the_blacklist
+          
+          # 获取最新的 release tag
+          LATEST_TAG=$(git describe --tags --abbrev=0)
+          VERSION=$(grep 'version=' Source/module.prop | cut -d= -f2)
+          
+          # 更新 update.json 文件
+          cat > update.json << EOF
+          {
+            "version": "$(grep 'version=' Source/module.prop | cut -d= -f2)",
+            "versionCode": $(grep 'versionCode=' Source/module.prop | cut -d= -f2),
+            "zipUrl": "https://github.com/lucky-cry/magisk-modules/releases/download/v${VERSION}/crond_clear_the_blacklist-${VERSION}.zip",
+            "changelog": "https://raw.githubusercontent.com/lucky-cry/magisk-modules/crond_clear_the_blacklist/changelog"
+          }
+          EOF
+          
+          # 提交更改
+          git add update.json
+          git commit -m "Update URLs to GitHub links"
+          
+          # 再次拉取并使用 --rebase 选项
+          git pull --rebase origin crond_clear_the_blacklist
+          
+          # 推送更改
+          git push origin crond_clear_the_blacklist
