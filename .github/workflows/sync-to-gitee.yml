@@ -112,8 +112,9 @@ jobs:
 
       - name: Update JSON URLs
         run: |
-          # 确保在正确的分支上
+          # 确保在正确的分支上并更新本地分支
           git checkout Hcfile_sharing
+          git pull origin Hcfile_sharing
           
           # 获取最新的 release tag
           LATEST_TAG=$(git describe --tags --abbrev=0)
@@ -123,12 +124,17 @@ jobs:
           {
             "version": "$(grep 'version=' Source/module.prop | cut -d= -f2)",
             "versionCode": $(grep 'versionCode=' Source/module.prop | cut -d= -f2),
-            "zipUrl": "https://github.com/${{ github.repository }}/releases/download/${LATEST_TAG}/Hcfile_sharing-$(grep 'version=' Source/module.prop | cut -d= -f2).zip",
-            "changelog": "https://raw.githubusercontent.com/${{ github.repository }}/Hcfile_sharing/changelog"
+            "zipUrl": "https://github.com/lucky-cry/magisk-modules/releases/download/${LATEST_TAG}/Hcfile_sharing-$(grep 'version=' Source/module.prop | cut -d= -f2).zip",
+            "changelog": "https://raw.githubusercontent.com/lucky-cry/magisk-modules/Hcfile_sharing/changelog"
           }
           EOF
           
           # 提交更改
           git add update.json
           git commit -m "Update URLs to GitHub links"
+          
+          # 再次拉取并使用 --rebase 选项
+          git pull --rebase origin Hcfile_sharing
+          
+          # 推送更改
           git push origin Hcfile_sharing
