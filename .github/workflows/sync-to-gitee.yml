@@ -188,7 +188,7 @@ jobs:
           {
             "version": "$(grep 'version=' Source/module.prop | cut -d= -f2)",
             "versionCode": $(grep 'versionCode=' Source/module.prop | cut -d= -f2),
-            "zipUrl": "https://github.com/lucky-cry/magisk-modules/releases/download/v${VERSION}/Battery_whitelist-${VERSION}.zip",
+            "zipUrl": "https://github.com/lucky-cry/magisk-modules/releases/download/v${VERSION}/BATTERYOPT-${VERSION}.zip",
             "changelog": "https://raw.githubusercontent.com/lucky-cry/magisk-modules/Battery_whitelist/changelog"
           }
           EOF
