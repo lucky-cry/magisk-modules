@@ -101,6 +101,6 @@ jobs:
           # 提交更改
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
-          git add update.json Source/module.prop version
+          git add update.json Source/module.prop version changelog
           git commit -m "Update module to v${MODULE_VERSION} (${MODULE_VERSIONCODE})"
           git push origin ${BRANCH_NAME}
