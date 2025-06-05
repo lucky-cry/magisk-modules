@@ -3,7 +3,7 @@ name: Build Magisk Module
 on:
   push:
     branches:
-      - '*'
+      - 'Hcfile_sharing'
     paths:
       - 'Source/**'
   workflow_dispatch:
