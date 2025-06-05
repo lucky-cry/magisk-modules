@@ -3,7 +3,7 @@ name: Build Magisk Module
 on:
   push:
     branches:
-      - '*'
+      - 'Battery_whitelist'
     paths:
       - 'Source/**'
   workflow_dispatch:
