@@ -181,15 +181,19 @@ jobs:
           git checkout Battery_whitelist
           git pull origin Battery_whitelist
           
+          # 进入 Source 目录
+          cd Source
+          
           # 获取最新的 release tag
           LATEST_TAG=$(git describe --tags --abbrev=0)
           VERSION=$(grep 'version=' module.prop | cut -d= -f2)
           
           # 更新 update.json 文件
+          cd ..
           cat > update.json << EOF
           {
-            "version": "$(grep 'version=' module.prop | cut -d= -f2)",
-            "versionCode": $(grep 'versionCode=' module.prop | cut -d= -f2),
+            "version": "$(cd Source && grep 'version=' module.prop | cut -d= -f2)",
+            "versionCode": "$(cd Source && grep 'versionCode=' module.prop | cut -d= -f2)",
             "zipUrl": "https://github.com/lucky-cry/magisk-modules/releases/download/v${VERSION}/BATTERYOPT-${VERSION}.zip",
             "changelog": "https://raw.githubusercontent.com/lucky-cry/magisk-modules/Battery_whitelist/changelog"
           }
