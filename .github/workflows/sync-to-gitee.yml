@@ -31,13 +31,6 @@ jobs:
           git config --global user.name "${GITEE_USER}"
           git config --global user.email "${GITEE_USER}@users.noreply.github.com"
 
-      - name: Fetch all branches and tags
-        run: |
-          git remote set-branches origin '*'
-          git fetch origin --tags --force
-          echo "Current branches:"
-          git branch -a
-
       - name: Push to Gitee
         env:
           GITEE_USER: lucky__cat
@@ -53,6 +46,8 @@ jobs:
           
           # 推送所有分支到 Gitee
           for branch in $(git branch -r | grep -v '\->' | sed 's/origin\///'); do
+            # 清理工作目录
+            git clean -fd
             git checkout -b $branch origin/$branch || git checkout $branch
             git push gitee $branch --force
           done
@@ -186,6 +181,9 @@ jobs:
           echo "Completed release sync" 
       - name: Update JSON URLs
         run: |
+          # 清理工作目录
+          git clean -fd
+          
           # 确保在正确的分支上并更新本地分支
           git checkout Battery_whitelist
           git pull origin Battery_whitelist
