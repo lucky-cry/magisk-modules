@@ -110,26 +110,28 @@ jobs:
         run: |
           # 获取最新的 GitHub 发行版
           latest_release=$(curl -H "Authorization: token $GH_TOKEN" \
-            "https://api.github.com/repos/${{ github.repository }}/releases/latest")
+            "https://api.github.com/repos/${{ github.repository }}/releases")
           
-          RELEASE_TAG=$(echo "$latest_release" | jq -r '.tag_name')
-          RELEASE_NAME=$(echo "$latest_release" | jq -r '.name')
-          RELEASE_BODY=$(echo "$latest_release" | jq -r '.body')
+          # 查找当前分支最新的发布
+          current_release=$(echo "$latest_release" | jq -c '.[] | select(.assets[].name | contains("crond_start_alipay"))' | head -n 1)
           
-          # 检查是否是 crond_start_alipay 分支的发布
-          if ! echo "$RELEASE_NAME" | grep -q "crond_start_alipay"; then
-            echo "Skipping: Not a crond_start_alipay release"
+          if [ -z "$current_release" ]; then
+            echo "No release found for crond_start_alipay branch"
             exit 0
           fi
           
-          echo "Processing latest release: $RELEASE_TAG"
+          RELEASE_TAG=$(echo "$current_release" | jq -r '.tag_name')
+          RELEASE_NAME=$(echo "$current_release" | jq -r '.name')
+          RELEASE_BODY=$(echo "$current_release" | jq -r '.body')
+          
+          echo "Processing release: $RELEASE_TAG"
           
           # 下载发行版附件
           mkdir -p "release_assets"
           cd "release_assets"
           
           # 获取并下载资产
-          echo "$latest_release" | jq -r '.assets[] | .browser_download_url' | while read -r url; do
+          echo "$current_release" | jq -r '.assets[].browser_download_url' | while read -r url; do
             if [ ! -z "$url" ] && echo "$url" | grep -q "crond_start_alipay"; then
               echo "Downloading asset: $url"
               filename=$(basename "$url")
