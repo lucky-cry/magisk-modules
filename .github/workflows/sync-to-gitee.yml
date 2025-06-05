@@ -43,6 +43,9 @@ jobs:
           GITEE_USER: lucky__cat
           GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
         run: |
+          # 保存当前状态
+          git stash -u
+          
           # 添加 Gitee remote（使用 HTTPS）
           git remote add gitee https://${GITEE_USER}:${GITEE_TOKEN}@gitee.com/${GITEE_USER}/magisk-modules.git
           
@@ -54,6 +57,9 @@ jobs:
           
           # 推送所有标签
           git push gitee --tags --force
+          
+          # 恢复之前的状态
+          git stash pop
           
           echo "Push completed"
 
@@ -174,7 +180,6 @@ jobs:
           cd ..
           rm -rf "release_assets"
           echo "Completed release sync" 
-
       - name: Update JSON URLs
         run: |
           # 确保在正确的分支上并更新本地分支
@@ -214,3 +219,4 @@ jobs:
           
           # 推送更改
           git push origin Battery_whitelist
+
