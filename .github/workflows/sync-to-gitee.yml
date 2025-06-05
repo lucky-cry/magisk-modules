@@ -2,10 +2,7 @@ name: Sync to Gitee
 
 on:
   push:
-    branches:
-      - crond_clear_the_blacklist
-  release:
-    types: [published]
+    branches: [ crond_clear_the_blacklist ]
   workflow_dispatch:
 
 jobs:
@@ -15,63 +12,64 @@ jobs:
       - name: Sleep for 30 seconds
         run: sleep 30
 
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
           fetch-tags: true
+          ref: crond_clear_the_blacklist
           
       - name: Configure Git
         env:
           GITEE_USER: lucky__cat
-          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
         run: |
           git config --global user.name "${GITEE_USER}"
           git config --global user.email "${GITEE_USER}@users.noreply.github.com"
+
+      - name: Fetch all branches and tags
+        run: |
+          git remote set-branches origin '*'
+          git fetch origin --tags --force
+          echo "Current branches:"
+          git branch -a
 
       - name: Push to Gitee
         env:
           GITEE_USER: lucky__cat
           GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
         run: |
-          # 添加 Gitee remote（使用 HTTPS）
+          # 添加 Gitee remote
           git remote add gitee https://${GITEE_USER}:${GITEE_TOKEN}@gitee.com/${GITEE_USER}/magisk-modules.git
           
-          # 推送所有分支到 Gitee
-          for branch in $(git branch -r | grep -v '\->' | sed 's/origin\///'); do
-            # 清理工作目录
-            git clean -fd
-            git checkout -b $branch origin/$branch || git checkout $branch
-            
-            # 如果是 crond_clear_the_blacklist 分支，更新 update.json 为 Gitee 链接
-            if [ "$branch" = "crond_clear_the_blacklist" ]; then
-              cd Source
-              VERSION=$(grep 'version=' module.prop | cut -d= -f2)
-              VCODE=$(grep 'versionCode=' module.prop | cut -d= -f2)
-              cd ..
-              
-              echo "{" > update.json
-              echo "  \"version\": \"$VERSION\"," >> update.json
-              echo "  \"versionCode\": \"$VCODE\"," >> update.json
-              echo "  \"zipUrl\": \"https://gitee.com/${GITEE_USER}/magisk-modules/releases/download/v${VERSION}/crond_clear_the_blacklist-${VERSION}.zip\"," >> update.json
-              echo "  \"changelog\": \"https://gitee.com/${GITEE_USER}/magisk-modules/raw/crond_clear_the_blacklist/changelog\"" >> update.json
-              echo "}" >> update.json
-              
-              # 提交 Gitee 版本的 update.json
-              git add update.json
-              git commit -m "Update URLs to Gitee links" || true
-            fi
-            
-            # 推送到 Gitee
-            git push gitee $branch --force
-          done
+          # 只同步 crond_clear_the_blacklist 分支
+          git checkout crond_clear_the_blacklist
           
-          # 推送所有标签
+          # 更新 update.json 为 Gitee 链接
+          cd Source
+          VERSION=$(grep 'version=' module.prop | cut -d= -f2)
+          VCODE=$(grep 'versionCode=' module.prop | cut -d= -f2)
+          cd ..
+          
+          echo "{" > update.json
+          echo "  \"version\": \"$VERSION\"," >> update.json
+          echo "  \"versionCode\": \"$VCODE\"," >> update.json
+          echo "  \"zipUrl\": \"https://gitee.com/${GITEE_USER}/magisk-modules/releases/download/v${VERSION}/crond_clear_the_blacklist-${VERSION}.zip\"," >> update.json
+          echo "  \"changelog\": \"https://gitee.com/${GITEE_USER}/magisk-modules/raw/crond_clear_the_blacklist/changelog\"" >> update.json
+          echo "}" >> update.json
+          
+          # 提交 Gitee 版本的 update.json
+          git add update.json
+          git commit -m "Update URLs to Gitee links" || true
+          
+          # 只推送 crond_clear_the_blacklist 分支到 Gitee
+          git push gitee crond_clear_the_blacklist:crond_clear_the_blacklist --force
+          
+          # 推送相关标签
           git push gitee --tags --force
           echo "Push completed"
 
       - name: Update JSON URLs for GitHub
-        if: github.event_name == 'release' || (github.event_name == 'push' && github.ref == 'refs/heads/crond_clear_the_blacklist')
+        if: github.event_name == 'push' && github.ref == 'refs/heads/crond_clear_the_blacklist'
         run: |
           # 清理工作目录
           git clean -fd
@@ -104,8 +102,7 @@ jobs:
             git push origin crond_clear_the_blacklist
           fi
 
-      - name: Sync Release Assets
-        if: github.event_name == 'release'
+      - name: Sync Latest Release to Gitee
         env:
           GITEE_USER: lucky__cat
           GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
@@ -113,21 +110,29 @@ jobs:
         run: |
           # 获取最新的 GitHub 发行版
           latest_release=$(curl -H "Authorization: token $GH_TOKEN" \
-            "https://api.github.com/repos/${{ github.repository }}/releases/latest")
+            "https://api.github.com/repos/${{ github.repository }}/releases")
           
-          RELEASE_TAG=$(echo "$latest_release" | jq -r '.tag_name')
-          RELEASE_NAME=$(echo "$latest_release" | jq -r '.name')
-          RELEASE_BODY=$(echo "$latest_release" | jq -r '.body')
+          # 查找当前分支最新的发布
+          current_release=$(echo "$latest_release" | jq -c '.[] | select(.assets[].name | contains("crond_clear_the_blacklist"))' | head -n 1)
           
-          echo "Processing latest release: $RELEASE_TAG"
+          if [ -z "$current_release" ]; then
+            echo "No release found for crond_clear_the_blacklist branch"
+            exit 0
+          fi
+          
+          RELEASE_TAG=$(echo "$current_release" | jq -r '.tag_name')
+          RELEASE_NAME=$(echo "$current_release" | jq -r '.name')
+          RELEASE_BODY=$(echo "$current_release" | jq -r '.body')
+          
+          echo "Processing release: $RELEASE_TAG"
           
           # 下载发行版附件
           mkdir -p "release_assets"
           cd "release_assets"
           
           # 获取并下载资产
-          echo "$latest_release" | jq -r '.assets[] | .browser_download_url' | while read -r url; do
-            if [ ! -z "$url" ]; then
+          echo "$current_release" | jq -r '.assets[].browser_download_url' | while read -r url; do
+            if [ ! -z "$url" ] && echo "$url" | grep -q "crond_clear_the_blacklist"; then
               echo "Downloading asset: $url"
               filename=$(basename "$url")
               curl -L -H "Authorization: token $GH_TOKEN" -o "$filename" "$url"
@@ -140,19 +145,21 @@ jobs:
           RELEASE_BODY="${RELEASE_BODY:-"从 GitHub 同步的发行版 ${RELEASE_TAG}"}"
           response=$(curl -s -X POST \
             -H "Content-Type: application/json;charset=UTF-8" \
-            -d "{\"access_token\":\"${GITEE_TOKEN}\",\"tag_name\":\"${RELEASE_TAG}\",\"name\":\"${RELEASE_NAME}\",\"body\":\"${RELEASE_BODY}\",\"prerelease\":false}" \
+            -d "{\"access_token\":\"${GITEE_TOKEN}\",\"tag_name\":\"${RELEASE_TAG}\",\"name\":\"${RELEASE_NAME}\",\"body\":\"${RELEASE_BODY}\",\"prerelease\":false,\"target_commitish\":\"$(git rev-parse HEAD)\"}" \
             "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases")
           
           # 上传所有文件
           for file in *; do
             if [ -f "$file" ]; then
               echo "Uploading: $file"
-              curl -X POST \
+              release_id=$(echo "$response" | jq -r '.id')
+              upload_response=$(curl -X POST \
                 -H "Content-Type: multipart/form-data" \
                 -F "access_token=${GITEE_TOKEN}" \
                 -F "file=@${file}" \
-                "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases/${RELEASE_TAG}/attach_files"
-              sleep 1
+                "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases/${release_id}/attach_files")
+              echo "Upload response: $upload_response"
+              sleep 2
             fi
           done
           
