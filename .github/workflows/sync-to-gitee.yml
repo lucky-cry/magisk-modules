@@ -49,14 +49,14 @@ jobs:
               VERSION=$(grep 'version=' module.prop | cut -d= -f2)
               cd ..
               
-              cat > update.json << EOF
-              {
-                "version": "$(cd Source && grep 'version=' module.prop | cut -d= -f2)",
-                "versionCode": "$(cd Source && grep 'versionCode=' module.prop | cut -d= -f2)",
-                "zipUrl": "https://gitee.com/${GITEE_USER}/magisk-modules/releases/download/v${VERSION}/BATTERYOPT-${VERSION}.zip",
-                "changelog": "https://gitee.com/${GITEE_USER}/magisk-modules/raw/Battery_whitelist/changelog"
-              }
-              EOF
+              cat > update.json << 'EOFMARKER'
+{
+  "version": "$(cd Source && grep 'version=' module.prop | cut -d= -f2)",
+  "versionCode": "$(cd Source && grep 'versionCode=' module.prop | cut -d= -f2)",
+  "zipUrl": "https://gitee.com/${GITEE_USER}/magisk-modules/releases/download/v${VERSION}/BATTERYOPT-${VERSION}.zip",
+  "changelog": "https://gitee.com/${GITEE_USER}/magisk-modules/raw/Battery_whitelist/changelog"
+}
+EOFMARKER
               
               # 提交 Gitee 版本的 update.json
               git add update.json
@@ -91,14 +91,14 @@ jobs:
           
           # 更新 update.json 文件为 GitHub 链接
           cd ..
-          cat > update.json << EOF
-          {
-            "version": "$(cd Source && grep 'version=' module.prop | cut -d= -f2)",
-            "versionCode": "$(cd Source && grep 'versionCode=' module.prop | cut -d= -f2)",
-            "zipUrl": "https://github.com/lucky-cry/magisk-modules/releases/download/v${VERSION}/BATTERYOPT-${VERSION}.zip",
-            "changelog": "https://raw.githubusercontent.com/lucky-cry/magisk-modules/Battery_whitelist/changelog"
-          }
-          EOF
+          cat > update.json << 'EOFMARKER'
+{
+  "version": "$(cd Source && grep 'version=' module.prop | cut -d= -f2)",
+  "versionCode": "$(cd Source && grep 'versionCode=' module.prop | cut -d= -f2)",
+  "zipUrl": "https://github.com/lucky-cry/magisk-modules/releases/download/v${VERSION}/BATTERYOPT-${VERSION}.zip",
+  "changelog": "https://raw.githubusercontent.com/lucky-cry/magisk-modules/Battery_whitelist/changelog"
+}
+EOFMARKER
           
           # 检查是否有更改
           if git diff --quiet update.json; then
