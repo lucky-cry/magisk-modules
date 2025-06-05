@@ -17,6 +17,7 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
+          ref: crond_start_alipay
           
       - name: Configure Git
         env:
@@ -40,36 +41,30 @@ jobs:
           # 添加 Gitee remote
           git remote add gitee https://${GITEE_USER}:${GITEE_TOKEN}@gitee.com/${GITEE_USER}/magisk-modules.git
           
-          # 推送所有分支到 Gitee
-          for branch in $(git branch -r | grep -v '\->' | sed 's/origin\///'); do
-            # 清理工作目录
-            git clean -fd
-            git checkout -b $branch origin/$branch || git checkout $branch
-            
-            # 如果是 crond_start_alipay 分支，更新 update.json 为 Gitee 链接
-            if [ "$branch" = "crond_start_alipay" ]; then
-              cd Source
-              VERSION=$(grep 'version=' module.prop | cut -d= -f2)
-              VCODE=$(grep 'versionCode=' module.prop | cut -d= -f2)
-              cd ..
-              
-              echo "{" > update.json
-              echo "  \"version\": \"$VERSION\"," >> update.json
-              echo "  \"versionCode\": \"$VCODE\"," >> update.json
-              echo "  \"zipUrl\": \"https://gitee.com/${GITEE_USER}/magisk-modules/releases/download/v${VERSION}/crond_start_alipay-${VERSION}.zip\"," >> update.json
-              echo "  \"changelog\": \"https://gitee.com/${GITEE_USER}/magisk-modules/raw/crond_start_alipay/changelog\"" >> update.json
-              echo "}" >> update.json
-              
-              # 提交 Gitee 版本的 update.json
-              git add update.json
-              git commit -m "Update URLs to Gitee links" || true
-            fi
-            
-            # 推送到 Gitee
-            git push gitee $branch --force
-          done
+          # 只同步 crond_start_alipay 分支
+          git checkout crond_start_alipay
           
-          # 推送所有标签
+          # 更新 update.json 为 Gitee 链接
+          cd Source
+          VERSION=$(grep 'version=' module.prop | cut -d= -f2)
+          VCODE=$(grep 'versionCode=' module.prop | cut -d= -f2)
+          cd ..
+          
+          echo "{" > update.json
+          echo "  \"version\": \"$VERSION\"," >> update.json
+          echo "  \"versionCode\": \"$VCODE\"," >> update.json
+          echo "  \"zipUrl\": \"https://gitee.com/${GITEE_USER}/magisk-modules/releases/download/v${VERSION}/crond_start_alipay-${VERSION}.zip\"," >> update.json
+          echo "  \"changelog\": \"https://gitee.com/${GITEE_USER}/magisk-modules/raw/crond_start_alipay/changelog\"" >> update.json
+          echo "}" >> update.json
+          
+          # 提交 Gitee 版本的 update.json
+          git add update.json
+          git commit -m "Update URLs to Gitee links" || true
+          
+          # 只推送 crond_start_alipay 分支到 Gitee
+          git push gitee crond_start_alipay:crond_start_alipay --force
+          
+          # 推送相关标签
           git push gitee --tags --force
           echo "Push completed"
 
@@ -121,6 +116,12 @@ jobs:
           RELEASE_NAME=$(echo "$latest_release" | jq -r '.name')
           RELEASE_BODY=$(echo "$latest_release" | jq -r '.body')
           
+          # 检查是否是 crond_start_alipay 分支的发布
+          if ! echo "$RELEASE_NAME" | grep -q "crond_start_alipay"; then
+            echo "Skipping: Not a crond_start_alipay release"
+            exit 0
+          fi
+          
           echo "Processing latest release: $RELEASE_TAG"
           
           # 下载发行版附件
@@ -129,7 +130,7 @@ jobs:
           
           # 获取并下载资产
           echo "$latest_release" | jq -r '.assets[] | .browser_download_url' | while read -r url; do
-            if [ ! -z "$url" ]; then
+            if [ ! -z "$url" ] && echo "$url" | grep -q "crond_start_alipay"; then
               echo "Downloading asset: $url"
               filename=$(basename "$url")
               curl -L -H "Authorization: token $GH_TOKEN" -o "$filename" "$url"
