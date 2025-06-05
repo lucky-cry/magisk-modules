@@ -1,6 +1,6 @@
 {
   "version": "1.0.10",
   "versionCode": "2025060510",
-  "zipUrl": "https://github.com/lucky-cry/magisk-modules/releases/download/v1.0.10/BATTERYOPT-1.0.10.zip",
-  "changelog": "https://raw.githubusercontent.com/lucky-cry/magisk-modules/Battery_whitelist/changelog"
+  "zipUrl": "https://gitee.com/lucky__cat/magisk-modules/releases/download/v1.0.10/BATTERYOPT-1.0.10.zip",
+  "changelog": "https://gitee.com/lucky__cat/magisk-modules/raw/Battery_whitelist/changelog"
 }
