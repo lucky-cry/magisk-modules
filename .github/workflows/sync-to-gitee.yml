@@ -43,8 +43,10 @@ jobs:
           GITEE_USER: lucky__cat
           GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
         run: |
-          # 保存当前状态
-          git stash -u
+          # 如果 update.json 存在，先备份它
+          if [ -f update.json ]; then
+            mv update.json update.json.bak
+          fi
           
           # 添加 Gitee remote（使用 HTTPS）
           git remote add gitee https://${GITEE_USER}:${GITEE_TOKEN}@gitee.com/${GITEE_USER}/magisk-modules.git
@@ -58,8 +60,10 @@ jobs:
           # 推送所有标签
           git push gitee --tags --force
           
-          # 恢复之前的状态
-          git stash pop
+          # 如果有备份，恢复 update.json
+          if [ -f update.json.bak ]; then
+            mv update.json.bak update.json
+          fi
           
           echo "Push completed"
 
