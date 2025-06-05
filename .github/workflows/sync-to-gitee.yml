@@ -4,8 +4,6 @@ on:
   push:
     branches:
       - Battery_whitelist
-    paths-ignore:
-      - 'update.json'
   release:
     types: [published]
   workflow_dispatch:
@@ -14,15 +12,15 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - name: Sleep for 60 seconds
-        run: sleep 60
+      - name: Sleep for 30 seconds
+        run: sleep 30
 
       - name: Checkout
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
           fetch-tags: true
-          
+
       - name: Configure Git
         env:
           GITEE_USER: lucky__cat
@@ -36,11 +34,6 @@ jobs:
           GITEE_USER: lucky__cat
           GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
         run: |
-          # 如果 update.json 存在，先备份它
-          if [ -f update.json ]; then
-            mv update.json update.json.bak
-          fi
-          
           # 添加 Gitee remote（使用 HTTPS）
           git remote add gitee https://${GITEE_USER}:${GITEE_TOKEN}@gitee.com/${GITEE_USER}/magisk-modules.git
           
@@ -49,80 +42,76 @@ jobs:
             # 清理工作目录
             git clean -fd
             git checkout -b $branch origin/$branch || git checkout $branch
+            
+            # 如果是 Battery_whitelist 分支，更新 update.json 为 Gitee 链接
+            if [ "$branch" = "Battery_whitelist" ]; then
+              cd Source
+              VERSION=$(grep 'version=' module.prop | cut -d= -f2)
+              cd ..
+              
+              cat > update.json << EOF
+              {
+                "version": "$(cd Source && grep 'version=' module.prop | cut -d= -f2)",
+                "versionCode": "$(cd Source && grep 'versionCode=' module.prop | cut -d= -f2)",
+                "zipUrl": "https://gitee.com/${GITEE_USER}/magisk-modules/releases/download/v${VERSION}/BATTERYOPT-${VERSION}.zip",
+                "changelog": "https://gitee.com/${GITEE_USER}/magisk-modules/raw/Battery_whitelist/changelog"
+              }
+              EOF
+              
+              # 提交 Gitee 版本的 update.json
+              git add update.json
+              git commit -m "Update URLs to Gitee links" || true
+            fi
+            
+            # 推送到 Gitee
             git push gitee $branch --force
           done
           
           # 推送所有标签
           git push gitee --tags --force
           
-          # 如果有备份，恢复 update.json
-          if [ -f update.json.bak ]; then
-            mv update.json.bak update.json
-          fi
-          
           echo "Push completed"
 
-      - name: Sync All Releases to Gitee
-        if: github.event_name == 'workflow_dispatch'
-        env:
-          GITEE_USER: lucky__cat
-          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Update JSON URLs for GitHub
+        if: github.event_name == 'release' || (github.event_name == 'push' && github.ref == 'refs/heads/Battery_whitelist')
         run: |
-          # 获取所有 GitHub 发行版
-          releases=$(curl -H "Authorization: token $GH_TOKEN" \
-            "https://api.github.com/repos/${{ github.repository }}/releases")
+          # 清理工作目录
+          git clean -fd
           
-          echo "Found releases to sync"
+          # 确保在正确的分支上并更新本地分支
+          git checkout Battery_whitelist
+          git pull origin Battery_whitelist
           
-          # 遍历所有发行版
-          echo "$releases" | jq -c '.[]' | while read -r release; do
-            RELEASE_TAG=$(echo "$release" | jq -r '.tag_name')
-            RELEASE_NAME=$(echo "$release" | jq -r '.name')
-            RELEASE_BODY=$(echo "$release" | jq -r '.body')
-            
-            echo "Processing release: $RELEASE_TAG"
-            
-            # 下载该发行版的所有附件
-            mkdir -p "release_assets_${RELEASE_TAG}"
-            cd "release_assets_${RELEASE_TAG}"
-            
-            # 获取并下载所有资产
-            echo "$release" | jq -r '.assets[] | .browser_download_url' | while read -r url; do
-              if [ ! -z "$url" ]; then
-                echo "Downloading asset: $url"
-                wget "$url"
-              fi
-            done
-            
-            # 创建 Gitee 发行版
-            echo "Creating Gitee release: $RELEASE_TAG"
-            RELEASE_BODY="${RELEASE_BODY:-"从 GitHub 同步的发行版 ${RELEASE_TAG}"}"
-            response=$(curl -X POST \
-              -H "Content-Type: application/json;charset=UTF-8" \
-              -d "{\"access_token\":\"${GITEE_TOKEN}\",\"tag_name\":\"${RELEASE_TAG}\",\"name\":\"${RELEASE_NAME}\",\"body\":\"${RELEASE_BODY}\",\"prerelease\":false}" \
-              "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases")
-            
-            # 上传资产文件
-            for file in *; do
-              if [ -f "$file" ]; then
-                echo "Uploading: $file"
-                curl -X POST \
-                  -H "Content-Type: multipart/form-data" \
-                  -F "access_token=${GITEE_TOKEN}" \
-                  -F "file=@${file}" \
-                  "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases/${RELEASE_TAG}/attach_files"
-              fi
-            done
-            
-            cd ..
-            rm -rf "release_assets_${RELEASE_TAG}"
-            echo "Completed release: $RELEASE_TAG"
-            
-            sleep 2
-          done
+          # 进入 Source 目录
+          cd Source
+          
+          # 获取最新的 release tag
+          LATEST_TAG=$(git describe --tags --abbrev=0)
+          VERSION=$(grep 'version=' module.prop | cut -d= -f2)
+          
+          # 更新 update.json 文件为 GitHub 链接
+          cd ..
+          cat > update.json << EOF
+          {
+            "version": "$(cd Source && grep 'version=' module.prop | cut -d= -f2)",
+            "versionCode": "$(cd Source && grep 'versionCode=' module.prop | cut -d= -f2)",
+            "zipUrl": "https://github.com/lucky-cry/magisk-modules/releases/download/v${VERSION}/BATTERYOPT-${VERSION}.zip",
+            "changelog": "https://raw.githubusercontent.com/lucky-cry/magisk-modules/Battery_whitelist/changelog"
+          }
+          EOF
+          
+          # 检查是否有更改
+          if git diff --quiet update.json; then
+            echo "No changes to update.json"
+          else
+            # 提交更改
+            git add update.json
+            git commit -m "Update URLs to GitHub links"
+            git push origin Battery_whitelist
+          fi
 
-      - name: Sync Latest Release to Gitee
+      - name: Sync Release Assets
+        if: github.event_name == 'release'
         env:
           GITEE_USER: lucky__cat
           GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
@@ -157,68 +146,23 @@ jobs:
           RELEASE_BODY="${RELEASE_BODY:-"从 GitHub 同步的发行版 ${RELEASE_TAG}"}"
           response=$(curl -s -X POST \
             -H "Content-Type: application/json;charset=UTF-8" \
-            -d "{\"access_token\":\"${GITEE_TOKEN}\",\"tag_name\":\"${RELEASE_TAG}\",\"name\":\"${RELEASE_NAME}\",\"body\":\"${RELEASE_BODY}\",\"prerelease\":false,\"target_commitish\":\"$(git rev-parse HEAD)\"}" \
+            -d "{\"access_token\":\"${GITEE_TOKEN}\",\"tag_name\":\"${RELEASE_TAG}\",\"name\":\"${RELEASE_NAME}\",\"body\":\"${RELEASE_BODY}\",\"prerelease\":false}" \
             "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases")
           
           # 上传所有文件
           for file in *; do
             if [ -f "$file" ]; then
               echo "Uploading: $file"
-              release_id=$(echo "$response" | jq -r '.id')
-              upload_response=$(curl -X POST \
+              curl -X POST \
                 -H "Content-Type: multipart/form-data" \
                 -F "access_token=${GITEE_TOKEN}" \
                 -F "file=@${file}" \
-                "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases/${release_id}/attach_files")
-              
-              echo "Upload response: $upload_response"
-              sleep 2
+                "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases/${RELEASE_TAG}/attach_files"
+              sleep 1
             fi
           done
           
           cd ..
           rm -rf "release_assets"
-          echo "Completed release sync" 
-      - name: Update JSON URLs
-        run: |
-          # 清理工作目录
-          git clean -fd
-          
-          # 确保在正确的分支上并更新本地分支
-          git checkout Battery_whitelist
-          git pull origin Battery_whitelist
-          
-          # 进入 Source 目录
-          cd Source
-          
-          # 获取最新的 release tag
-          LATEST_TAG=$(git describe --tags --abbrev=0)
-          VERSION=$(grep 'version=' module.prop | cut -d= -f2)
-          
-          # 更新 update.json 文件
-          cd ..
-          cat > update.json << EOF
-          {
-            "version": "$(cd Source && grep 'version=' module.prop | cut -d= -f2)",
-            "versionCode": "$(cd Source && grep 'versionCode=' module.prop | cut -d= -f2)",
-            "zipUrl": "https://github.com/lucky-cry/magisk-modules/releases/download/v${VERSION}/BATTERYOPT-${VERSION}.zip",
-            "changelog": "https://raw.githubusercontent.com/lucky-cry/magisk-modules/Battery_whitelist/changelog"
-          }
-          EOF
-          
-          # 检查是否有更改
-          if git diff --quiet update.json; then
-            echo "No changes to update.json"
-            exit 0
-          fi
-          
-          # 提交更改
-          git add update.json
-          git commit -m "Update URLs to GitHub links"
-          
-          # 再次拉取并使用 --rebase 选项
-          git pull --rebase origin Battery_whitelist
-          
-          # 推送更改
-          git push origin Battery_whitelist
+          echo "Completed release sync"
 
