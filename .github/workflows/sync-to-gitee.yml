@@ -4,24 +4,27 @@ on:
   push:
     branches:
       - 'Hcfile_sharing'
+  release:
+    types: [published]
   workflow_dispatch:
 
 jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - name: Sleep for 60 seconds
-        run: sleep 60
-        
+      - name: Sleep for 30 seconds
+        run: sleep 30
+
       - name: Checkout code
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
           fetch-tags: true
-
+          
       - name: Configure Git
         env:
           GITEE_USER: lucky__cat
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
         run: |
           git config --global user.name "${GITEE_USER}"
           git config --global user.email "${GITEE_USER}@users.noreply.github.com"
@@ -43,14 +46,70 @@ jobs:
           
           # 推送所有分支到 Gitee
           for branch in $(git branch -r | grep -v '\->' | sed 's/origin\///'); do
+            # 清理工作目录
+            git clean -fd
             git checkout -b $branch origin/$branch || git checkout $branch
+            
+            # 如果是 Hcfile_sharing 分支，更新 update.json 为 Gitee 链接
+            if [ "$branch" = "Hcfile_sharing" ]; then
+              cd Source
+              VERSION=$(grep 'version=' module.prop | cut -d= -f2)
+              VCODE=$(grep 'versionCode=' module.prop | cut -d= -f2)
+              cd ..
+              
+              echo "{" > update.json
+              echo "  \"version\": \"$VERSION\"," >> update.json
+              echo "  \"versionCode\": \"$VCODE\"," >> update.json
+              echo "  \"zipUrl\": \"https://gitee.com/${GITEE_USER}/magisk-modules/releases/download/v${VERSION}/Hcfile_sharing-${VERSION}.zip\"," >> update.json
+              echo "  \"changelog\": \"https://gitee.com/${GITEE_USER}/magisk-modules/raw/Hcfile_sharing/changelog\"" >> update.json
+              echo "}" >> update.json
+              
+              # 提交 Gitee 版本的 update.json
+              git add update.json
+              git commit -m "Update URLs to Gitee links" || true
+            fi
+            
+            # 推送到 Gitee
             git push gitee $branch --force
           done
           
           # 推送所有标签
           git push gitee --tags --force
-          
           echo "Push completed"
+
+      - name: Update JSON URLs for GitHub
+        if: github.event_name == 'release' || (github.event_name == 'push' && github.ref == 'refs/heads/Hcfile_sharing')
+        run: |
+          # 清理工作目录
+          git clean -fd
+          
+          # 确保在正确的分支上并更新本地分支
+          git checkout Hcfile_sharing
+          git pull origin Hcfile_sharing
+          
+          # 进入 Source 目录
+          cd Source
+          VERSION=$(grep 'version=' module.prop | cut -d= -f2)
+          VCODE=$(grep 'versionCode=' module.prop | cut -d= -f2)
+          cd ..
+          
+          # 更新 update.json 文件为 GitHub 链接
+          echo "{" > update.json
+          echo "  \"version\": \"$VERSION\"," >> update.json
+          echo "  \"versionCode\": \"$VCODE\"," >> update.json
+          echo "  \"zipUrl\": \"https://github.com/lucky-cry/magisk-modules/releases/download/v${VERSION}/Hcfile_sharing-${VERSION}.zip\"," >> update.json
+          echo "  \"changelog\": \"https://raw.githubusercontent.com/lucky-cry/magisk-modules/Hcfile_sharing/changelog\"" >> update.json
+          echo "}" >> update.json
+          
+          # 检查是否有更改
+          if git diff --quiet update.json; then
+            echo "No changes to update.json"
+          else
+            # 提交更改
+            git add update.json
+            git commit -m "Update URLs to GitHub links"
+            git push origin Hcfile_sharing
+          fi
 
       - name: Sync Latest Release to Gitee
         env:
@@ -100,7 +159,6 @@ jobs:
                 -F "access_token=${GITEE_TOKEN}" \
                 -F "file=@${file}" \
                 "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases/${release_id}/attach_files")
-              
               echo "Upload response: $upload_response"
               sleep 2
             fi
@@ -109,33 +167,3 @@ jobs:
           cd ..
           rm -rf "release_assets"
           echo "Completed release sync"
-
-      - name: Update JSON URLs
-        run: |
-          # 确保在正确的分支上并更新本地分支
-          git checkout Hcfile_sharing
-          git pull origin Hcfile_sharing
-          
-          # 获取最新的 release tag
-          LATEST_TAG=$(git describe --tags --abbrev=0)
-          VERSION=$(grep 'version=' Source/module.prop | cut -d= -f2)
-          
-          # 更新 update.json 文件
-          cat > update.json << EOF
-          {
-            "version": "$(grep 'version=' Source/module.prop | cut -d= -f2)",
-            "versionCode": $(grep 'versionCode=' Source/module.prop | cut -d= -f2),
-            "zipUrl": "https://github.com/lucky-cry/magisk-modules/releases/download/v${VERSION}/Hcfile_sharing-${VERSION}.zip",
-            "changelog": "https://raw.githubusercontent.com/lucky-cry/magisk-modules/Hcfile_sharing/changelog"
-          }
-          EOF
-          
-          # 提交更改
-          git add update.json
-          git commit -m "Update URLs to GitHub links"
-          
-          # 再次拉取并使用 --rebase 选项
-          git pull --rebase origin Hcfile_sharing
-          
-          # 推送更改
-          git push origin Hcfile_sharing
