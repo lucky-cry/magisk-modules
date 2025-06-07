@@ -1,6 +1,6 @@
 {
-  "version": "1.0.14",
-  "versionCode": "20250060714",
-  "zipUrl": "https://github.com/lucky-cry/magisk-modules/releases/download/v1.0.14/crond_start_alipay-1.0.14.zip",
-  "changelog": "https://raw.githubusercontent.com/lucky-cry/magisk-modules/crond_start_alipay/changelog"
+  "version": "1.0.15",
+  "versionCode": 20250060715,
+  "zipUrl": "https://gitee.com/lucky__cat/magisk-modules/releases/download/v1.0.15/crond_start_alipay-1.0.15.zip",
+  "changelog": "https://gitee.com/lucky__cat/magisk-modules/raw/crond_start_alipay/changelog"
 }
