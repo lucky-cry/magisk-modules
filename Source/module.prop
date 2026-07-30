@@ -1,0 +1,7 @@
+id=freeze_logd_switch
+name=logd 冻结切换
+version=v2.8
+versionCode=28
+author=懒猫
+description=logd 状态未知 | 点击按钮切换
+updateJson=https://raw.githubusercontent.com/lucky-cry/magisk-modules/freeze_logd_switch/update.json
