@@ -1,0 +1,8 @@
+# 忽略打包产物
+*.zip
+build.ps1
+打包模块.bat
+
+# 忽略系统文件
+Thumbs.db
+.DS_Store

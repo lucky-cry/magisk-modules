@@ -1,4 +1,4 @@
-v2.8
+v2.9
 - 【修复】并发锁死锁: 增加僵尸锁检测(PID存活判断)
 - 【修复】scene-daemon 僵尸进程堆积: kill_old_daemon 前置调用 + /proc 全扫描
 - 【修复】卸载脚本 local 语法错误
