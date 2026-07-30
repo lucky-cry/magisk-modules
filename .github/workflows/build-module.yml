@@ -63,9 +63,9 @@ jobs:
           mkdir temp_module
           cp -r Source/* temp_module/
           
-          # 进入临时目录打包
+          # 进入临时目录打包（-0 不压缩，Magisk 模块要求）
           cd temp_module
-          zip -r "../$ZIP_NAME" ./*
+          zip -r -0 "../$ZIP_NAME" ./*
           cd ..
           
           echo "zip_name=$ZIP_NAME" >> $GITHUB_OUTPUT
