@@ -1,4 +1,4 @@
-v3.1
+v3.2
 - 【修复】crond 启动检测改用 pidof,修复 pgrep 在 Magisk 环境不可用导致误判启动失败
 - 【修复】CROND_BIN 增加 fallback 路径,找不到 crond 时明确报错
 
