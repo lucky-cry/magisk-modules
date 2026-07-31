@@ -354,6 +354,22 @@ start_service() {
     CROND_BIN="/data/adb/busybox/crond"
   fi
 
+  # fallback: 遍历常见 busybox 路径
+  if [ -z "$CROND_BIN" ] || [ ! -f "$CROND_BIN" ]; then
+    for p in /data/adb/busybox/crond /system/bin/crond /system/xbin/crond; do
+      [ -f "$p" ] && { CROND_BIN="$p"; break; }
+    done
+  fi
+
+  if [ -z "$CROND_BIN" ] || [ ! -f "$CROND_BIN" ]; then
+    log "错误: 找不到 crond 二进制文件"
+    log "===== 跳过 crond 启动，仅依赖首次检查 ====="
+    log "===== 首次执行检查 ====="
+    sh "$MODDIR/cron_check.sh" &
+    log "首次检查已启动 (PID=$!)"
+    return
+  fi
+
   # 创建 cron.d 目录
   mkdir -p "$MODDIR/cron.d"
 
@@ -372,11 +388,11 @@ start_service() {
   sleep 1
   log "crond 已启动 (PID=$CROND_PID)"
 
-  # 检查 crond 是否运行
-  if pgrep -f "crond.*$MODDIR/cron.d" >/dev/null; then
+  # 检查 crond 是否运行 (pidof 比 pgrep 可靠)
+  if pidof crond >/dev/null; then
     log "crond 运行正常"
   else
-    log "错误: crond 启动失败"
+    log "错误: crond 启动失败，仅依赖首次检查"
   fi
 
   # 首次执行检查

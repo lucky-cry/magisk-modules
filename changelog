@@ -1,3 +1,7 @@
+v3.1
+- 【修复】crond 启动检测改用 pidof,修复 pgrep 在 Magisk 环境不可用导致误判启动失败
+- 【修复】CROND_BIN 增加 fallback 路径,找不到 crond 时明确报错
+
 v3.0
 - 【重构】目录结构调整: 模块源码移入 Source/ 目录
 - 【工作流】接入 CI 自动打包 + Gitee 同步
