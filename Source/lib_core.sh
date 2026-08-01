@@ -66,10 +66,16 @@ check_daemon_process() {
   return 1
 }
 
+# ========== 获取 logd 主 PID ==========
+get_logd_pid() {
+  pidof logd 2>/dev/null | awk '{print $1}'
+}
+
 # ========== Scene 异常判定 ==========
-# 同时检测两个日志文件的行数，任一文件 >1 行即正常
-is_scene_abnormal() {
-  [ -d "/data/data/${SCENE_PKG}" ] || return 0
+# 返回 0=正常, 1=异常
+# 多进程堆积或日志卡死(两文件均≤1行)均视为异常
+is_scene_normal() {
+  [ -d "/data/data/${SCENE_PKG}" ] || return 1
 
   # 多进程检测: scene-daemon 累计过多 PID → 僵尸进程堆积 → 异常
   local pid_count=$(pidof "$DAEMON_NAME" 2>/dev/null | wc -w)
@@ -142,7 +148,7 @@ freeze_logd() {
 
 unfreeze_logd() {
   [ -f "$FREEZEFILE" ] && echo 0 > "$FREEZEFILE"
-  local pid=$(pidof logd | awk '{print $1}')
+  local pid=$(get_logd_pid)
   [ -n "$pid" ] && echo "$pid" > /sys/fs/cgroup/cgroup.procs 2>/dev/null
   rmdir "$CGPATH" 2>/dev/null
   sed -i "s/^description=.*/description=logd 已解冻 | 点击按钮冻结/" "$MODDIR/module.prop" 2>/dev/null
@@ -191,6 +197,11 @@ do_recovery() {
     fi
   fi
   echo "$$" > "$RECOVERY_LOCK/pid"
+  # 写后验证: 防止并发实例刚删掉本锁目录并接管
+  if [ "$(cat "$RECOVERY_LOCK/pid" 2>/dev/null)" != "$$" ]; then
+    log "锁竞争: 已被其他实例接管, 本次跳过"
+    return
+  fi
 
   # 冷却检查
   if [ -f "$STAMP" ]; then
@@ -242,7 +253,7 @@ do_recovery() {
   sleep "$delay_sec"
 
   # 步骤5: 冻结 logd
-  local logd_pid=$(pidof logd | awk '{print $1}')
+  local logd_pid=$(get_logd_pid)
   if [ -n "$logd_pid" ]; then
     freeze_logd "$logd_pid"
     log "===== 恢复完成 (延迟${delay_min}分钟) ====="
@@ -279,26 +290,15 @@ check_once() {
     SCREEN="息屏"
   fi
 
-  # 息屏时只检查异常
-  if [ "$SCREEN" = "息屏" ]; then
-    if ! is_scene_abnormal; then
-      echo 0 > "$NORMAL_COUNT"
-      local stuck=$(cat "$STUCK_COUNT" 2>/dev/null || echo 0)
-      log "── [息屏] 异常 · 累计卡死=${stuck}次 · logd=$(is_frozen && echo '已冻结' || echo '未冻结') ──"
-      do_recovery
-    fi
-    return
-  fi
-
-  # 亮屏时执行完整检查
-  if is_scene_abnormal; then
+  # 息屏与亮屏的异常处理逻辑一致，仅在息屏跳过亮屏特有逻辑（已无文件监控，逻辑已等同）
+  if is_scene_normal; then
     # 正常: 累积复位计数
     reset_stuck_on_normal
   else
     # 异常: 复位正常计数 + 执行恢复
     echo 0 > "$NORMAL_COUNT"
     local stuck=$(cat "$STUCK_COUNT" 2>/dev/null || echo 0)
-    log "── [亮屏] 异常 · 累计卡死=${stuck}次 · logd=$(is_frozen && echo '已冻结' || echo '未冻结') ──"
+    log "── [$SCREEN] 异常 · 累计卡死=${stuck}次 · logd=$(is_frozen && echo '已冻结' || echo '未冻结') ──"
     do_recovery
   fi
 }
@@ -318,7 +318,7 @@ start_service() {
   log "卡死计数已清零"
 
   # 获取 logd PID
-  LOGD_PID=$(pidof logd | awk '{print $1}')
+  LOGD_PID=$(get_logd_pid)
   log "logd PID=$LOGD_PID"
   [ -z "$LOGD_PID" ] && { log "错误: logd 未运行, 退出"; exit 0; }
 
@@ -361,12 +361,16 @@ start_service() {
     done
   fi
 
-  if [ -z "$CROND_BIN" ] || [ ! -f "$CROND_BIN" ]; then
-    log "错误: 找不到 crond 二进制文件"
-    log "===== 跳过 crond 启动，仅依赖首次检查 ====="
+  # 首次执行检查（crond 不可用或正常启动后都会执行一次）
+  run_first_check() {
     log "===== 首次执行检查 ====="
     sh "$MODDIR/cron_check.sh" &
     log "首次检查已启动 (PID=$!)"
+  }
+
+  if [ -z "$CROND_BIN" ] || [ ! -f "$CROND_BIN" ]; then
+    log "错误: 找不到 crond 二进制文件，跳过 crond 启动"
+    run_first_check
     return
   fi
 
@@ -396,8 +400,5 @@ start_service() {
   fi
 
   # 首次执行检查
-  log "===== 首次执行检查 ====="
-  sh "$MODDIR/cron_check.sh" &
-  FIRST_CHECK_PID=$!
-  log "首次检查已启动 (PID=$FIRST_CHECK_PID)"
+  run_first_check
 }

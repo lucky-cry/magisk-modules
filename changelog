@@ -1,3 +1,10 @@
+v3.3
+- 【优化】修复 do_recovery 锁竞态窗口(写pid后验证,防止并发实例误接管)
+- 【优化】check_once 合并息屏/亮屏重复逻辑
+- 【优化】is_scene_abnormal 命名反转修正为 is_scene_normal
+- 【优化】提取 get_logd_pid() 函数,消除重复代码
+- 【优化】crond 失败分支与首次检查去重
+
 v3.2
 - 【修复】crond 启动检测改用 pidof,修复 pgrep 在 Magisk 环境不可用导致误判启动失败
 - 【修复】CROND_BIN 增加 fallback 路径,找不到 crond 时明确报错
