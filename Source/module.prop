@@ -4,4 +4,4 @@ version=3.4
 versionCode=34
 author=懒猫
 description=logd 状态未知 | 点击按钮切换
-updateJson=https://raw.githubusercontent.com/lucky-cry/magisk-modules/freeze_logd_switch/update.json
+updateJson=https://gitee.com/lucky__cat/magisk-modules/raw/freeze_logd_switch/update.json
