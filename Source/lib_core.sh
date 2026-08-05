@@ -71,63 +71,46 @@ get_logd_pid() {
   pidof logd 2>/dev/null | awk '{print $1}'
 }
 
-# ========== Scene 异常判定 ==========
-# 返回 0=正常, 1=异常
-# 多进程堆积或日志卡死(两文件均≤1行)均视为异常
+# ========== Scene 卡死判定 ==========
+# 返回 0=正常, 1=卡死
+# 卡死条件: scene-daemon 进程数>3 且 两个日志文件行数均<2
+# 其余情况一律视为正常
 is_scene_normal() {
-  [ -d "/data/data/${SCENE_PKG}" ] || return 1
-
-  # 多进程检测: scene-daemon 累计过多 PID → 僵尸进程堆积 → 异常
-  local pid_count=$(pidof "$DAEMON_NAME" 2>/dev/null | wc -w)
-  if [ -n "$pid_count" ] && [ "$pid_count" -gt 3 ]; then
-    log_debug "Scene 异常: $DAEMON_NAME 进程数=$pid_count (>3), 僵尸堆积"
-    return 1
-  fi
+  # 未安装 → 不卡死
+  [ -d "/data/data/${SCENE_PKG}" ] || return 0
 
   local scene_files="/data/data/com.omarea.vtools/files"
-  local stderr_state=""
-  local daemon_state=""
+  local stderr_state="不存在"
+  local daemon_state="不存在"
   local stderr_lines=0
   local daemon_lines=0
 
   # 检测 daemon.stderr.log
   local stderr_log="$scene_files/daemon.stderr.log"
-  if [ ! -f "$stderr_log" ]; then
-    stderr_state="不存在"
-  else
+  if [ -f "$stderr_log" ]; then
     stderr_lines=$(timeout 3 wc -l < "$stderr_log" 2>/dev/null | tr -d '[:space:]')
-    if [ -n "$stderr_lines" ] && [ "$stderr_lines" -gt 1 ]; then
-      stderr_state="${stderr_lines}行 ✓"
-    else
-      stderr_state="${stderr_lines:-0}行 ✗"
-    fi
+    stderr_lines=${stderr_lines:-0}
+    [ "$stderr_lines" -gt 1 ] && stderr_state="${stderr_lines}行 ✓" || stderr_state="${stderr_lines}行 ✗"
   fi
 
   # 检测 daemon.log
   local daemon_log="$scene_files/daemon.log"
-  if [ ! -f "$daemon_log" ]; then
-    daemon_state="不存在"
-  else
+  if [ -f "$daemon_log" ]; then
     daemon_lines=$(timeout 3 wc -l < "$daemon_log" 2>/dev/null | tr -d '[:space:]')
-    if [ -n "$daemon_lines" ] && [ "$daemon_lines" -gt 1 ]; then
-      daemon_state="${daemon_lines}行 ✓"
-    else
-      daemon_state="${daemon_lines:-0}行 ✗"
-    fi
+    daemon_lines=${daemon_lines:-0}
+    [ "$daemon_lines" -gt 1 ] && daemon_state="${daemon_lines}行 ✓" || daemon_state="${daemon_lines}行 ✗"
   fi
 
-  # 任一文件 >1 行 → 正常
-  if [ -n "$stderr_lines" ] && [ "$stderr_lines" -gt 1 ]; then
-    log_debug "Scene 正常: daemon.stderr.log=$stderr_state, daemon.log=$daemon_state"
-    return 0
-  fi
-  if [ -n "$daemon_lines" ] && [ "$daemon_lines" -gt 1 ]; then
-    log_debug "Scene 正常: daemon.stderr.log=$stderr_state, daemon.log=$daemon_state"
-    return 0
+  # 卡死判定: pid>3 且 两个日志均 <2 行
+  local pid_count=$(pidof "$DAEMON_NAME" 2>/dev/null | wc -w)
+  pid_count=${pid_count:-0}
+  if [ "$pid_count" -gt 3 ] && [ "$stderr_lines" -lt 2 ] && [ "$daemon_lines" -lt 2 ]; then
+    log_debug "Scene 卡死: 进程数=$pid_count, stderr=${stderr_state}, daemon=${daemon_state}"
+    return 1
   fi
 
-  log_debug "Scene 卡死: daemon.stderr.log=$stderr_state, daemon.log=$daemon_state"
-  return 1
+  log_debug "Scene 正常: 进程数=$pid_count, stderr=${stderr_state}, daemon=${daemon_state}"
+  return 0
 }
 
 # ========== cgroup 冻结/解冻 ==========
