@@ -75,12 +75,16 @@ jobs:
           GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 获取最新的 GitHub 发行版
-          latest_release=$(curl -H "Authorization: token $GH_TOKEN" \
-            "https://api.github.com/repos/${{ github.repository }}/releases")
-
-          # 查找当前分支最新的发布
-          current_release=$(echo "$latest_release" | jq -c '.[] | select(.assets[].name | contains("freeze_logd"))' | head -n 1)
+          # 构建流程可能尚未创建 Release, 最多等待 5 分钟
+          current_release=""
+          for i in $(seq 1 30); do
+            latest_release=$(curl -H "Authorization: token $GH_TOKEN" \
+              "https://api.github.com/repos/${{ github.repository }}/releases")
+            current_release=$(echo "$latest_release" | jq -c '.[] | select(.assets[].name | contains("freeze_logd"))' | head -n 1)
+            [ -n "$current_release" ] && break
+            echo "Release not ready, retry $i/30..."
+            sleep 10
+          done
 
           if [ -z "$current_release" ]; then
             echo "No release found for freeze_logd_switch branch"
