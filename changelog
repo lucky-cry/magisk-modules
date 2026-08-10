@@ -10,6 +10,7 @@ v3.5
 - 【优化】日志默认关闭 DEBUG 并增加大小轮转
 - 【优化】uninstall 补全临时文件与监控进程清理
 - 【优化】CI: 修复 changelog 重复插入, updateJson 仅改打包副本, 升级 Actions 版本
+- 【修复】模块包改为仅存储(store)打包, 不再压缩
 - 【修复】scene_restart.sh pkill 循环限制重试次数, 变量引用加引号
 
 v3.4
