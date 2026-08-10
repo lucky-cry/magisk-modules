@@ -1,3 +1,6 @@
+v3.6
+- 【修复】安装时 busybox 部署失败不再中止安装（降级 --install → 警告继续），模块依赖系统 toybox 即可运行
+
 v3.5
 - 【修复】KernelSU/Magisk crond 路径探测, 修复 KernelSU 上定时监控静默失效
 - 【修复】冻结漂移校验: logd 重启后自动重新冻结

@@ -4,7 +4,8 @@
 # ======================================================
 #  功能说明：
 #    Magisk 刷入模块时，在解压文件之后、完成安装之前调用此脚本。
-#    本脚本负责部署 busybox 工具集，lib_core.sh 启动时会把该目录加入 PATH。
+#    本脚本尝试部署 busybox 工具集（lib_core.sh 启动时会把该目录加入 PATH）。
+#    部署失败不中止安装：模块依赖系统 toybox 即可正常工作。
 #
 #  日志输出：
 #    安装过程通过 ui_print 显示在 Magisk 刷入界面
@@ -31,20 +32,29 @@ install_log() {
 }
 
 #
-# install_busybox - 用指定 busybox 二进制部署符号链接到模块目录
+# install_busybox - 尽力部署 busybox 到模块目录（失败仅警告，不中止安装）
 #
 install_busybox() {
   local src="$1"
   install_log "使用 busybox: ${src}"
   mkdir -p "${busyboxdir}"
   ui_print "－ 安装 busybox 中……"
-  if "${src}" --install -s "${busyboxdir}"; then
+  if "${src}" --install -s "${busyboxdir}" 2>/dev/null; then
     install_log "busybox --install -s 成功"
     ui_print "－ 完成！"
-  else
-    install_log "错误: busybox --install -s 失败！"
-    abort "－ 错误！"
+    return 0
   fi
+
+  install_log "警告: busybox --install -s 失败, 尝试副本模式 --install"
+  if "${src}" --install "${busyboxdir}" 2>/dev/null; then
+    install_log "busybox --install 成功"
+    ui_print "－ 完成！"
+    return 0
+  fi
+
+  install_log "警告: busybox 部署失败, 继续安装（模块依赖系统 toybox 可正常工作）"
+  ui_print "－ 警告: busybox 部署失败，不影响使用"
+  return 1
 }
 
 install_log "===== customize.sh 开始执行 ====="
@@ -53,9 +63,9 @@ install_log "MODPATH=$MODPATH"
 install_log "magiskbusybox=$magiskbusybox"
 install_log "kernelbusybox=$kernelbusybox"
 
-# ---------- 部署 busybox ----------
-# 策略：优先 Magisk 自带 busybox → 系统内置 busybox → 报错中止
-# 部署后 lib_core.sh 会自动将该目录加入 PATH
+# ---------- 部署 busybox（尽力而为） ----------
+# 策略：优先 Magisk 自带 busybox → 系统内置 busybox → 跳过
+# 部署后 lib_core.sh 会自动将该目录加入 PATH；部署失败不影响模块运行
 
 if test -f "${magiskbusybox}"; then
   # 情况1：使用 Magisk 自带的 busybox
@@ -66,11 +76,11 @@ elif test -f "${kernelbusybox}"; then
   install_busybox "${kernelbusybox}"
 
 else
-  # 情况3：未找到任何 busybox
-  install_log "错误: 未找到任何 busybox 二进制文件！"
+  # 情况3：未找到任何 busybox —— 仅警告，继续安装
+  install_log "警告: 未找到任何 busybox 二进制文件, 继续安装"
   install_log "  检查路径: $magiskbusybox (不存在)"
   install_log "  搜索路径: /data/adb/ (未找到)"
-  abort "－ 您的magisk busybox 怎么不见了？"
+  ui_print "－ 警告: 未找到 busybox，继续安装"
 fi
 
 # ---------- 显示安装成功信息 ----------
