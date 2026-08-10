@@ -1,3 +1,6 @@
+v3.8
+- 【修复】不再以预检结果阻断冻结: 直接执行真实冻结并回读 cgroup.freeze 验证, 预检降级为诊断信息, 修复部分设备预检误判导致无法冻结
+
 v3.7
 - 【修复】cgroup v2/freezer 检测改为功能性探测(实际写入 cgroup.subtree_control), 修复部分设备 cgroup.controllers 不列出 freezer 导致误判不支持
 

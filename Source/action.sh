@@ -28,13 +28,6 @@ if [ -z "$LOGD_PID" ]; then
   exit 1
 fi
 
-# cgroup v2 / freezer 能力检测
-if ! check_cgroup_support; then
-  echo "错误: 当前系统不支持 cgroup v2 freezer"
-  log_action "失败: cgroup v2 freezer 不可用"
-  exit 1
-fi
-
 # 读取 → 切换 → 写回（三步都是内存文件系统操作，极快）
 if is_frozen; then
   unfreeze_logd
@@ -45,7 +38,7 @@ else
     echo "logd 已冻结"
     log_action "冻结完成"
   else
-    echo "冻结失败，请查看模块日志"
-    log_action "失败: 冻结操作未成功"
+    echo "冻结失败（设备可能不支持 cgroup v2 freezer），请查看模块日志"
+    log_action "失败: 冻结未生效"
   fi
 fi

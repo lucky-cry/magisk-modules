@@ -92,15 +92,16 @@ check_running() {
   echo $$ > "${PID_FILE}"
 }
 
-# ========== cgroup v2 / freezer 能力检测 ==========
-# 返回 0=支持, 1=不支持
-# 检测策略：
-#   1) /sys/fs/cgroup 必须是 cgroup v2 文件系统
-#   2) 功能性探测：尝试在根层级启用 freezer 控制器
-#      与 freeze_logd 的实际操作完全一致；部分 Android 设备的
-#      cgroup.controllers 不列出 freezer 但实际可用，直接探测可避免误判
+# ========== cgroup v2 / freezer 能力检测（仅诊断，不阻断操作） ==========
+# 返回 0=预检通过, 1=预检未通过
+# 预检结果仅用于日志提示；实际是否可用以 freeze_logd 的写入+回读验证为准
 check_cgroup_support() {
-  grep -qw cgroup2 /proc/filesystems 2>/dev/null || return 1
+  # 1) 必须是 cgroup v2 文件系统
+  [ "$(stat -fc %T /sys/fs/cgroup 2>/dev/null)" = "cgroup2fs" ] || return 1
+  # 2) freezer 可用性: 根层级 controllers 列出 或 根层级已存在 cgroup.freeze
+  grep -qw freezer /sys/fs/cgroup/cgroup.controllers 2>/dev/null && return 0
+  [ -f /sys/fs/cgroup/cgroup.freeze ] && return 0
+  # 3) 功能性探测: 尝试在根层级启用 freezer 控制器
   echo "+freezer" > /sys/fs/cgroup/cgroup.subtree_control 2>/dev/null
 }
 
@@ -131,11 +132,15 @@ is_frozen() {
 
 freeze_logd() {
   local pid="$1"
-  check_cgroup_support || { log_error "freeze_logd: 系统不支持 cgroup v2 freezer"; return 1; }
   mkdir -p "$CGPATH" 2>/dev/null
   echo "+freezer" > /sys/fs/cgroup/cgroup.subtree_control 2>/dev/null
   echo "$pid" > "$CGPATH/cgroup.procs" 2>/dev/null || { log_error "写入 cgroup.procs 失败"; return 1; }
   echo 1 > "$FREEZEFILE" 2>/dev/null || { log_error "写入 cgroup.freeze 失败"; return 1; }
+  # 回读验证冻结是否真正生效
+  if [ "$(cat "$FREEZEFILE" 2>/dev/null)" != "1" ]; then
+    log_error "freeze_logd: 冻结未生效 (cgroup.freeze=$(cat "$FREEZEFILE" 2>/dev/null))"
+    return 1
+  fi
   sed -i "s/^description=.*/description=logd 已冻结（循环监控） | 点击按钮解冻/" "$MODDIR/module.prop" 2>/dev/null
   log "freeze_logd: PID=$pid 已冻结, cgroup.freeze=$(cat "$FREEZEFILE" 2>/dev/null), module.prop 已同步"
 }
@@ -152,7 +157,6 @@ unfreeze_logd() {
 # ========== 冻结完整性校验 ==========
 # logd 重启后 cgroup.procs 里的旧 PID 会失效，检测到漂移即重新冻结
 ensure_logd_frozen() {
-  check_cgroup_support || return 0
   local pid=$(get_logd_pid)
   [ -n "$pid" ] || { log_error "ensure_logd_frozen: logd 未运行"; return 1; }
   if is_frozen && grep -qw "$pid" "$CGPATH/cgroup.procs" 2>/dev/null; then
@@ -349,11 +353,13 @@ start_service() {
   log "cgroup路径=$CGPATH"
   log "冷却=${COOLDOWN}s | 日志级别=${LOG_LEVEL}"
 
-  # cgroup v2 / freezer 能力检测
+  # cgroup v2 / freezer 预检（仅诊断，实际以冻结验证为准）
   if check_cgroup_support; then
-    log "cgroup v2 freezer 支持正常"
+    log "cgroup v2 freezer 预检通过"
   else
-    log_error "系统不支持 cgroup v2 freezer，冻结功能将不可用"
+    log "提示: cgroup v2 freezer 预检未通过, 继续尝试实际冻结"
+    log "cgroup fs类型=$(stat -fc %T /sys/fs/cgroup 2>/dev/null)"
+    log "cgroup.controllers=$(tr '\n' ' ' < /sys/fs/cgroup/cgroup.controllers 2>/dev/null)"
   fi
 
   # 初始化卡死计数
