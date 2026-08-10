@@ -21,8 +21,19 @@ echo name=v%MODVER%>> version
 echo version=%MODCODE%>> version
 
 git add .
-git commit -m "v%MODVER%"
-git push origin freeze_logd_switch --force-with-lease
+git commit -m "v%MODVER%" >nul 2>&1 || echo (无新增提交, 继续)
+
+REM 推送前先同步远程最新状态: 取回 + 变基, 避免覆盖 CI 提交, 也避免 stale info 拒绝
+git fetch origin freeze_logd_switch || goto :error
+git pull --rebase origin freeze_logd_switch || goto :error
+git push origin freeze_logd_switch || goto :error
 
 echo Done. v%MODVER% pushed.
 pause
+exit /b 0
+
+:error
+echo.
+echo [错误] 同步失败, 请检查上方输出后重试.
+pause
+exit /b 1
