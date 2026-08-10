@@ -1,9 +1,30 @@
 #!/system/bin/sh
 # ======================================================
 #  lib_core.sh - 函数库（日志 / 检测 / cgroup / 恢复）
-#  被 service.sh 加载，所有函数在这里定义
-#  修改此文件后重启 service 即可生效，无需重启手机
+#  被 service.sh / cron_check.sh / action.sh / uninstall.sh 加载
+#  所有常量在此单点维护，修改后重启 service 即可生效
 # ======================================================
+
+# ========== 全局常量（单点维护） ==========
+CGPATH=/sys/fs/cgroup/logd_frozen
+FREEZEFILE="$CGPATH/cgroup.freeze"
+SCENE_PKG="com.omarea.vtools"
+DAEMON_NAME="scene-daemon"
+COOLDOWN=60
+STAMP="/data/local/tmp/scene_last_recovery"
+STUCK_COUNT="/data/local/tmp/scene_stuck_count"
+NORMAL_COUNT="/data/local/tmp/scene_normal_count"
+RESET_THRESHOLD=5
+MAX_FREEZE_DELAY=5
+LOG_DIR="/storage/emulated/0/Android/Freeze_logd"
+LOG_FILE="$LOG_DIR/log.md"
+PID_FILE="/data/local/tmp/freeze_logd_service.pid"
+RECOVERY_LOCK="/data/local/tmp/freeze_recovery_lock"
+LOG_MAX_SIZE=524288          # 日志超过 512KB 自动轮转
+LOG_LEVEL="info"             # debug=详细日志, 其他值只记录 info/error
+
+# 若安装阶段部署了模块 busybox，则优先使用（customize.sh 会创建该目录）
+[ -d "$MODDIR/busybox" ] && export PATH="$MODDIR/busybox:$PATH"
 
 # ========== 等待用户解锁设备 ==========
 Wait_until_login() {
@@ -22,17 +43,36 @@ log_clear() {
 }
 
 log() {
+  mkdir -p "$LOG_DIR" 2>/dev/null
   echo "[$(date '+%y/%m/%d %H:%M:%S')] | $*" >> "$LOG_FILE" 2>/dev/null
+  # 大小轮转（stat 只读元数据，开销极小）
+  local size=$(stat -c %s "$LOG_FILE" 2>/dev/null)
+  if [ -n "$size" ] && [ "$size" -gt "$LOG_MAX_SIZE" ]; then
+    log_clear "日志超限已轮转"
+  fi
 }
 
-log_debug() { log "DEBUG: $*"; }
+log_debug() { [ "$LOG_LEVEL" = "debug" ] && log "DEBUG: $*"; }
 log_info()  { log "INFO: $*"; }
 log_error() { log "ERROR: $*"; }
 
-# ========== 屏幕检测 ==========
-is_screen_on() {
-  local status=$(timeout 3 dumpsys window policy 2>/dev/null | grep 'mInputRestricted' | cut -d= -f2)
-  [ "$status" != "true" ]
+# ========== 进程检测 ==========
+check_daemon_process() {
+  [ -z "${DAEMON_NAME}" ] && { log_error "目标进程名为空！"; return 1; }
+
+  local pids=$(pidof "$DAEMON_NAME" 2>/dev/null)
+  if [ -n "$pids" ]; then
+    log_debug "检测到 $DAEMON_NAME (PID=$pids)"
+    return 0
+  fi
+
+  log_debug "$DAEMON_NAME 未找到"
+  return 1
+}
+
+# ========== 获取 logd 主 PID ==========
+get_logd_pid() {
+  pidof logd 2>/dev/null | awk '{print $1}'
 }
 
 # ========== PID 文件（防重复启动） ==========
@@ -52,76 +92,43 @@ check_running() {
   echo $$ > "${PID_FILE}"
 }
 
-# ========== 进程检测（pidof，极快无阻塞） ==========
-check_daemon_process() {
-  [ -z "${DAEMON_NAME}" ] && { log_error "目标进程名为空！"; return 1; }
-
-  local pids=$(pidof "$DAEMON_NAME" 2>/dev/null)
-  if [ -n "$pids" ]; then
-    log_debug "检测到 $DAEMON_NAME (PID=$pids)"
-    return 0
-  fi
-
-  log_debug "$DAEMON_NAME 未找到"
-  return 1
-}
-
-# ========== 获取 logd 主 PID ==========
-get_logd_pid() {
-  pidof logd 2>/dev/null | awk '{print $1}'
+# ========== cgroup v2 / freezer 能力检测 ==========
+# 返回 0=支持, 1=不支持
+check_cgroup_support() {
+  grep -qw cgroup2 /proc/filesystems 2>/dev/null || return 1
+  grep -qw freezer /sys/fs/cgroup/cgroup.controllers 2>/dev/null || return 1
+  return 0
 }
 
 # ========== Scene 卡死判定 ==========
-# 返回 0=正常, 1=卡死
-# 卡死条件: scene-daemon 进程数>3 且 两个日志文件行数均<2
-# 其余情况一律视为正常
+# 返回 0=正常, 1=异常
+# 主判据: scene-daemon 进程数 > 3 视为异常堆积
+# 日志行数是历史信息，无法反映进程当前是否存活，仅作调试参考
 is_scene_normal() {
-  # 未安装 → 不卡死
+  # 未安装 → 正常
   [ -d "/data/data/${SCENE_PKG}" ] || return 0
 
-  local scene_files="/data/data/com.omarea.vtools/files"
-  local stderr_state="不存在"
-  local daemon_state="不存在"
-  local stderr_lines=0
-  local daemon_lines=0
-
-  # 检测 daemon.stderr.log
-  local stderr_log="$scene_files/daemon.stderr.log"
-  if [ -f "$stderr_log" ]; then
-    stderr_lines=$(timeout 3 wc -l < "$stderr_log" 2>/dev/null | tr -d '[:space:]')
-    stderr_lines=${stderr_lines:-0}
-    [ "$stderr_lines" -gt 1 ] && stderr_state="${stderr_lines}行 ✓" || stderr_state="${stderr_lines}行 ✗"
-  fi
-
-  # 检测 daemon.log
-  local daemon_log="$scene_files/daemon.log"
-  if [ -f "$daemon_log" ]; then
-    daemon_lines=$(timeout 3 wc -l < "$daemon_log" 2>/dev/null | tr -d '[:space:]')
-    daemon_lines=${daemon_lines:-0}
-    [ "$daemon_lines" -gt 1 ] && daemon_state="${daemon_lines}行 ✓" || daemon_state="${daemon_lines}行 ✗"
-  fi
-
-  # 卡死判定: pid>3 且 两个日志均 <2 行
   local pid_count=$(pidof "$DAEMON_NAME" 2>/dev/null | wc -w)
   pid_count=${pid_count:-0}
-  if [ "$pid_count" -gt 3 ] && [ "$stderr_lines" -lt 2 ] && [ "$daemon_lines" -lt 2 ]; then
-    log_debug "Scene 卡死: 进程数=$pid_count, stderr=${stderr_state}, daemon=${daemon_state}"
+
+  if [ "$pid_count" -gt 3 ]; then
+    log_debug "Scene 异常: 进程数=$pid_count"
     return 1
   fi
 
-  log_debug "Scene 正常: 进程数=$pid_count, stderr=${stderr_state}, daemon=${daemon_state}"
+  log_debug "Scene 正常: 进程数=$pid_count"
   return 0
 }
 
 # ========== cgroup 冻结/解冻 ==========
-
 is_frozen() {
   [ -f "$FREEZEFILE" ] && [ "$(cat "$FREEZEFILE")" = "1" ]
 }
 
 freeze_logd() {
   local pid="$1"
-  mkdir -p "$CGPATH"
+  check_cgroup_support || { log_error "freeze_logd: 系统不支持 cgroup v2 freezer"; return 1; }
+  mkdir -p "$CGPATH" 2>/dev/null
   echo "+freezer" > /sys/fs/cgroup/cgroup.subtree_control 2>/dev/null
   echo "$pid" > "$CGPATH/cgroup.procs" 2>/dev/null || { log_error "写入 cgroup.procs 失败"; return 1; }
   echo 1 > "$FREEZEFILE" 2>/dev/null || { log_error "写入 cgroup.freeze 失败"; return 1; }
@@ -130,12 +137,25 @@ freeze_logd() {
 }
 
 unfreeze_logd() {
-  [ -f "$FREEZEFILE" ] && echo 0 > "$FREEZEFILE"
+  [ -f "$FREEZEFILE" ] && echo 0 > "$FREEZEFILE" 2>/dev/null
   local pid=$(get_logd_pid)
   [ -n "$pid" ] && echo "$pid" > /sys/fs/cgroup/cgroup.procs 2>/dev/null
   rmdir "$CGPATH" 2>/dev/null
   sed -i "s/^description=.*/description=logd 已解冻 | 点击按钮冻结/" "$MODDIR/module.prop" 2>/dev/null
   log "unfreeze_logd: logd 已解冻, cgroup子目录已清理, module.prop 已同步"
+}
+
+# ========== 冻结完整性校验 ==========
+# logd 重启后 cgroup.procs 里的旧 PID 会失效，检测到漂移即重新冻结
+ensure_logd_frozen() {
+  check_cgroup_support || return 0
+  local pid=$(get_logd_pid)
+  [ -n "$pid" ] || { log_error "ensure_logd_frozen: logd 未运行"; return 1; }
+  if is_frozen && grep -qw "$pid" "$CGPATH/cgroup.procs" 2>/dev/null; then
+    return 0
+  fi
+  log_info "检测到冻结漂移, 重新冻结 logd (PID=$pid)"
+  freeze_logd "$pid"
 }
 
 # ========== 重启 Scene 守护进程 ==========
@@ -154,8 +174,9 @@ restart_scene_daemon() {
   fi
 
   log_info "执行: sh $scene_restart"
-  sh "$scene_restart" >/dev/null 2>&1 &
-  log_info "重启脚本已启动 (返回码=$?)"
+  sh "$scene_restart" >/dev/null 2>&1
+  local rc=$?
+  log_info "重启脚本退出码=$rc"
   sleep 3
 }
 
@@ -163,14 +184,12 @@ restart_scene_daemon() {
 do_recovery() {
   log "===== 开始 Scene 异常恢复 ====="
 
-  # 互斥锁: 防止 crond 并发多个实例并行执行
-  # 锁目录 /data/local/tmp/freeze_recovery_lock/ 存在即锁定
-  # 内含 pid 文件用于僵尸锁检测
-  local RECOVERY_LOCK="/data/local/tmp/freeze_recovery_lock"
+  # 互斥锁: 防止并发多个实例并行执行
+  # 锁目录存在即锁定, 内含 pid 文件用于僵尸锁检测
   if ! mkdir "$RECOVERY_LOCK" 2>/dev/null; then
     local holder_pid=$(cat "$RECOVERY_LOCK/pid" 2>/dev/null)
     if [ -n "$holder_pid" ] && [ -d "/proc/$holder_pid" ]; then
-      log "恢复跳过: 上一实例仍在运行 (PID=$holder_pid)"
+      log_debug "恢复跳过: 上一实例仍在运行 (PID=$holder_pid)"
       return
     else
       # 僵尸锁: pid 缺失或进程已退出, 清理并接管
@@ -248,6 +267,13 @@ do_recovery() {
   rm -rf "$RECOVERY_LOCK" 2>/dev/null
 }
 
+# ========== 恢复是否进行中 ==========
+is_recovery_running() {
+  [ -d "$RECOVERY_LOCK" ] || return 1
+  local holder_pid=$(cat "$RECOVERY_LOCK/pid" 2>/dev/null)
+  [ -n "$holder_pid" ] && [ -d "/proc/$holder_pid" ]
+}
+
 # ========== 卡死计数复位 ==========
 reset_stuck_on_normal() {
   local normal=$(cat "$NORMAL_COUNT" 2>/dev/null)
@@ -264,25 +290,49 @@ reset_stuck_on_normal() {
   fi
 }
 
+# ========== 查找 crond 二进制 ==========
+# 兼容 Magisk / KernelSU / 系统自带
+find_crond() {
+  local p=""
+  if command -v magisk >/dev/null 2>&1; then
+    p="$(magisk --path 2>/dev/null)/.magisk/busybox/crond"
+    [ -f "$p" ] && { echo "$p"; return 0; }
+  fi
+  for p in \
+    /data/adb/ksu/bin/crond \
+    /data/adb/busybox/crond \
+    /system/bin/crond \
+    /system/xbin/crond; do
+    if [ -f "$p" ]; then
+      echo "$p"
+      return 0
+    fi
+  done
+  if command -v crond >/dev/null 2>&1; then
+    command -v crond
+    return 0
+  fi
+  return 1
+}
+
 # ========== 单次检查（由 crond 定时调用） ==========
 check_once() {
-  # 检测屏幕状态
-  if is_screen_on; then
-    SCREEN="亮屏"
-  else
-    SCREEN="息屏"
+  # 恢复进行中则跳过本轮, 避免计数器竞争与日志噪音
+  if is_recovery_running; then
+    log_debug "恢复流程进行中, 跳过本轮检查"
+    return
   fi
 
-  # 息屏与亮屏的异常处理逻辑一致，仅在息屏跳过亮屏特有逻辑（已无文件监控，逻辑已等同）
+  # 冻结完整性: logd 重启后自动重新冻结
+  ensure_logd_frozen
+
   if is_scene_normal; then
     # 正常: 累积复位计数
     reset_stuck_on_normal
   else
-    # 异常: 复位正常计数 + 执行恢复
+    # 异常: 复位正常计数 + 后台执行恢复（不长时间占用 crond 槽位）
     echo 0 > "$NORMAL_COUNT"
-    local stuck=$(cat "$STUCK_COUNT" 2>/dev/null || echo 0)
-    log "── [$SCREEN] 异常 · 累计卡死=${stuck}次 · logd=$(is_frozen && echo '已冻结' || echo '未冻结') ──"
-    do_recovery
+    ( do_recovery ) >/dev/null 2>&1 &
   fi
 }
 
@@ -293,7 +343,14 @@ start_service() {
   log_clear "service.sh 启动 (PID=$$)"
   log "MODDIR=$MODDIR"
   log "cgroup路径=$CGPATH"
-  log "亮屏间隔=${MONITOR_INTERVAL_ON}s | 熄屏间隔=${MONITOR_INTERVAL_OFF}s | 冷却=${COOLDOWN}s"
+  log "冷却=${COOLDOWN}s | 日志级别=${LOG_LEVEL}"
+
+  # cgroup v2 / freezer 能力检测
+  if check_cgroup_support; then
+    log "cgroup v2 freezer 支持正常"
+  else
+    log_error "系统不支持 cgroup v2 freezer，冻结功能将不可用"
+  fi
 
   # 初始化卡死计数
   echo 0 > "$STUCK_COUNT"
@@ -306,7 +363,7 @@ start_service() {
   [ -z "$LOGD_PID" ] && { log "错误: logd 未运行, 退出"; exit 0; }
 
   # 等待 Scene 守护进程
-  if pm list packages 2>/dev/null | grep -q "$SCENE_PKG"; then
+  if [ -d "/data/data/$SCENE_PKG" ]; then
     log "Scene 已安装，等待 $DAEMON_NAME..."
     for i in $(seq 1 24); do
       check_daemon_process && break
@@ -329,20 +386,7 @@ start_service() {
   # ========== 启动 crond 定时任务 ==========
   log "===== 启动 crond 定时任务 ====="
 
-  # 设置 busybox crond 路径
-  CROND_BIN=""
-  if [[ -f "/data/adb/magisk" ]] || [[ -f "/data/adb/magiskpolicy" ]]; then
-    CROND_BIN="$(magisk --path)/.magisk/busybox/crond"
-  elif [[ -f "/data/adb/ksud" ]]; then
-    CROND_BIN="/data/adb/busybox/crond"
-  fi
-
-  # fallback: 遍历常见 busybox 路径
-  if [ -z "$CROND_BIN" ] || [ ! -f "$CROND_BIN" ]; then
-    for p in /data/adb/busybox/crond /system/bin/crond /system/xbin/crond; do
-      [ -f "$p" ] && { CROND_BIN="$p"; break; }
-    done
-  fi
+  CROND_BIN=$(find_crond)
 
   # 首次执行检查（crond 不可用或正常启动后都会执行一次）
   run_first_check() {
@@ -351,7 +395,7 @@ start_service() {
     log "首次检查已启动 (PID=$!)"
   }
 
-  if [ -z "$CROND_BIN" ] || [ ! -f "$CROND_BIN" ]; then
+  if [ -z "$CROND_BIN" ]; then
     log "错误: 找不到 crond 二进制文件，跳过 crond 启动"
     run_first_check
     return
@@ -365,10 +409,10 @@ start_service() {
 
   # 设置执行权限
   chmod 755 "$MODDIR/cron_check.sh" 2>/dev/null
-  
+
   # 显示 cron.d/root 内容
   log "cron.d/root 内容: $(cat "$MODDIR/cron.d/root" 2>/dev/null)"
-  
+
   # 启动 crond
   "$CROND_BIN" -c "$MODDIR/cron.d" &
   CROND_PID=$!

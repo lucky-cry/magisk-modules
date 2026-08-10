@@ -22,7 +22,7 @@ echo version=%MODCODE%>> version
 
 git add .
 git commit -m "v%MODVER%"
-git push origin freeze_logd_switch --force
+git push origin freeze_logd_switch --force-with-lease
 
 echo Done. v%MODVER% pushed.
 pause

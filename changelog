@@ -1,4 +1,18 @@
-3.4
+v3.5
+- 【修复】KernelSU/Magisk crond 路径探测, 修复 KernelSU 上定时监控静默失效
+- 【修复】冻结漂移校验: logd 重启后自动重新冻结
+- 【修复】cgroup v2/freezer 能力检测, 不支持的设备明确报错而非静默失败
+- 【修改】Scene 卡死判定改为以进程数为主判据, 修复日志行数判据在稳态下失效
+- 【优化】常量收敛到 lib_core.sh, 消除 service/cron/action/uninstall 重复维护
+- 【优化】恢复流程后台执行, 不再长时间占用 crond 槽位; 恢复期间跳过重复检查
+- 【优化】busybox 部署去重并接入 PATH, 移除对 Magisk 二进制的 chmod 0777
+- 【优化】移除无用的 dumpsys 屏幕检测与 MONITOR_INTERVAL 死常量
+- 【优化】日志默认关闭 DEBUG 并增加大小轮转
+- 【优化】uninstall 补全临时文件与监控进程清理
+- 【优化】CI: 修复 changelog 重复插入, updateJson 仅改打包副本, 升级 Actions 版本
+- 【修复】scene_restart.sh pkill 循环限制重试次数, 变量引用加引号
+
+v3.4
 - 【修改】Scene 卡死判定: 改为 pid>3 且 两个日志均<2行 才判定卡死,其余情况一律正常
 
 v3.3

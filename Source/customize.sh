@@ -4,7 +4,7 @@
 # ======================================================
 #  功能说明：
 #    Magisk 刷入模块时，在解压文件之后、完成安装之前调用此脚本。
-#    本脚本负责部署 busybox 工具集，为模块脚本提供完整的命令行工具链。
+#    本脚本负责部署 busybox 工具集，lib_core.sh 启动时会把该目录加入 PATH。
 #
 #  日志输出：
 #    安装过程通过 ui_print 显示在 Magisk 刷入界面
@@ -30,6 +30,23 @@ install_log() {
   echo "$1"  # 同时输出到 ui_print 通道
 }
 
+#
+# install_busybox - 用指定 busybox 二进制部署符号链接到模块目录
+#
+install_busybox() {
+  local src="$1"
+  install_log "使用 busybox: ${src}"
+  mkdir -p "${busyboxdir}"
+  ui_print "－ 安装 busybox 中……"
+  if "${src}" --install -s "${busyboxdir}"; then
+    install_log "busybox --install -s 成功"
+    ui_print "－ 完成！"
+  else
+    install_log "错误: busybox --install -s 失败！"
+    abort "－ 错误！"
+  fi
+}
+
 install_log "===== customize.sh 开始执行 ====="
 install_log "MODDIR=$MODDIR"
 install_log "MODPATH=$MODPATH"
@@ -38,44 +55,15 @@ install_log "kernelbusybox=$kernelbusybox"
 
 # ---------- 部署 busybox ----------
 # 策略：优先 Magisk 自带 busybox → 系统内置 busybox → 报错中止
+# 部署后 lib_core.sh 会自动将该目录加入 PATH
 
-if test -f "${magiskbusybox}" ; then
+if test -f "${magiskbusybox}"; then
   # 情况1：使用 Magisk 自带的 busybox
-  install_log "使用 Magisk 自带 busybox: ${magiskbusybox}"
+  install_busybox "${magiskbusybox}"
 
-  chmod 0777 "${magiskbusybox}"
-  install_log "chmod 0777 完成"
-
-  mkdir -p "${busyboxdir}"
-  install_log "busybox 安装目录: ${busyboxdir}"
-
-  ui_print "－ 安装Magisk的busybox 中……"
-  if ${magiskbusybox} --install -s ${busyboxdir}; then
-    install_log "busybox --install -s 成功"
-    ui_print "－ 完成！"
-  else
-    install_log "错误: busybox --install -s 失败！"
-    abort "－ 错误！"
-  fi
-
-elif test -f "${kernelbusybox}" ; then
+elif test -f "${kernelbusybox}"; then
   # 情况2：使用非 Magisk 路径下找到的 busybox
-  install_log "使用内核 busybox: ${kernelbusybox}"
-
-  chmod 0777 "${kernelbusybox}"
-  install_log "chmod 0777 完成"
-
-  mkdir -p "${busyboxdir}"
-  install_log "busybox 安装目录: ${busyboxdir}"
-
-  ui_print "－ 安装Magisk的busybox 中……"
-  if ${kernelbusybox} --install -s ${busyboxdir}; then
-    install_log "busybox --install -s 成功"
-    ui_print "－ 完成！"
-  else
-    install_log "错误: busybox --install -s 失败！"
-    abort "－ 错误！"
-  fi
+  install_busybox "${kernelbusybox}"
 
 else
   # 情况3：未找到任何 busybox

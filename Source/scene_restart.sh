@@ -8,7 +8,7 @@
 scene="com.omarea.vtools"
 daemon="scene-daemon"
 
-current_dir=$(dirname $0)
+current_dir=$(dirname "$0")
 update_path="$current_dir/$daemon-bak"
 origin_path="$current_dir/$daemon"
 
@@ -51,8 +51,12 @@ kill_old_daemon(){
   done
 
   # 方法2: 如果 pkill/killall 可用（PATH 已含 toolkit），追加清理
+  # 限制重试次数: 僵尸进程 kill 成功但不会消失, 无限循环会卡死脚本
   if command -v pkill >/dev/null 2>&1; then
+    local retries=0
     while pkill -9 -x "$daemon" 2>/dev/null; do
+      retries=$((retries + 1))
+      [ "$retries" -ge 10 ] && break
       sleep 0.1
     done
   fi
@@ -89,11 +93,11 @@ kill_old_daemon
 
 touch "/cache/USER-NAME" 2> /dev/null
 if [[ "$?" == "0" ]] || [[ "$USER" == "ROOT" ]] || [[ "$USER" == "root" ]]; then
-  if [[ -f $update_path ]]; then
+  if [[ -f "$update_path" ]]; then
     rm -f "$origin_path" 2>/dev/null
-    killall -9 $daemon 2>/dev/null
+    killall -9 "$daemon" 2>/dev/null
     mv -f "$update_path" "$origin_path"
-    killall -9 $daemon 2>/dev/null
+    killall -9 "$daemon" 2>/dev/null
   fi
   if [[ "$(ksud -V 2>/dev/null)" != '' ]]; then
     export KSU=true
@@ -132,14 +136,14 @@ if [[ "$?" == "0" ]] || [[ "$USER" == "ROOT" ]] || [[ "$USER" == "root" ]]; then
       fi
       mv $log_path $current_dir/daemon.stderr.log
     fi
-    nohup $origin_path >/dev/null 2>$log_path &
+    nohup "$origin_path" >/dev/null 2>"$log_path" &
     renice -n -20 $(pidof scene-daemon)
     echo 'Scene-Daemon OK!'
   fi
 else
   cache_dir="/data/local/tmp"
 
-  killall -9 $daemon 2>/dev/null
+  killall -9 "$daemon" 2>/dev/null
 
   echo ''
   toolkit=$cache_dir/toolkit
@@ -149,8 +153,8 @@ else
 
   if [[ -f "$current_dir/busybox" ]] && [[ ! -f $toolkit/busybox ]]; then
     echo 'Copy BusyBox'
-    cp "$current_dir/busybox" $toolkit/busybox
-    chmod 777 $toolkit/busybox
+    cp "$current_dir/busybox" "$toolkit/busybox"
+    chmod 777 "$toolkit/busybox"
 
     echo 'Install BusyBox……'
     cd $toolkit
@@ -176,9 +180,9 @@ else
   echo "Target File: " $target_path
   echo ''
 
-  cp $origin_path $target_path
-  chmod 777 $target_path
-  nohup $target_path >/dev/null 2>&1 &
+  cp "$origin_path" "$target_path"
+  chmod 777 "$target_path"
+  nohup "$target_path" >/dev/null 2>&1 &
   if [[ $(pgrep scene-daemon) != "" ]]; then
     echo 'Scene-Daemon OK! ^_^'
   else

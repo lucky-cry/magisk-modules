@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Get module info
         id: module_info
@@ -24,7 +24,7 @@ jobs:
           MODULE_VERSIONCODE=$(grep -oP 'versionCode=\K.*' Source/module.prop)
           BRANCH_NAME=${GITHUB_REF#refs/heads/}
           REPO_NAME=${{ github.repository }}
-          
+
           echo "module_id=$MODULE_ID" >> $GITHUB_OUTPUT
           echo "module_name=$MODULE_NAME" >> $GITHUB_OUTPUT
           echo "module_version=$MODULE_VERSION" >> $GITHUB_OUTPUT
@@ -34,22 +34,15 @@ jobs:
 
       - name: Update changelog version
         run: |
-          MODULE_VERSION=${{ steps.module_info.outputs.module_version }}
-          
-          # 保存除第一行外的内容
-          tail -n +2 changelog > changelog.tmp
-          
-          # 添加新的版本号作为第一行
-          echo "$MODULE_VERSION" > changelog
-          cat changelog.tmp >> changelog
-          rm changelog.tmp
+          MODULE_VERSION=v${{ steps.module_info.outputs.module_version }}
 
-      - name: Update updateJson in module.prop
-        run: |
-          REPO_NAME=${{ steps.module_info.outputs.repo_name }}
-          BRANCH_NAME=${{ steps.module_info.outputs.branch_name }}
-          
-          sed -i "s|updateJson=.*|updateJson=https://gitee.com/lucky__cat/magisk-modules/raw/freeze_logd_switch/update.json|g" Source/module.prop
+          # 仅当首行不是当前版本时才插入, 避免重复构建重复插入
+          if ! head -n 1 changelog | grep -qx "$MODULE_VERSION"; then
+            tail -n +2 changelog > changelog.tmp
+            echo "$MODULE_VERSION" > changelog
+            cat changelog.tmp >> changelog
+            rm changelog.tmp
+          fi
 
       - name: Build module zip
         id: build
@@ -57,17 +50,20 @@ jobs:
           MODULE_ID=${{ steps.module_info.outputs.module_id }}
           MODULE_VERSION=${{ steps.module_info.outputs.module_version }}
           BRANCH_NAME=${{ steps.module_info.outputs.branch_name }}
-          
+
           ZIP_NAME="${MODULE_ID}-${MODULE_VERSION}.zip"
-          
+
           mkdir temp_module
           cp -r Source/* temp_module/
-          
-          # 进入临时目录打包（-0 不压缩，Magisk 模块要求）
+
+          # 仅打包副本使用 Gitee 更新源, 仓库内 module.prop 保持 GitHub 地址
+          sed -i "s|updateJson=.*|updateJson=https://gitee.com/lucky__cat/magisk-modules/raw/freeze_logd_switch/update.json|g" temp_module/module.prop
+
+          # 进入临时目录打包
           cd temp_module
-          zip -r -0 "../$ZIP_NAME" ./*
+          zip -r "../$ZIP_NAME" ./*
           cd ..
-          
+
           echo "zip_name=$ZIP_NAME" >> $GITHUB_OUTPUT
 
       - name: Get changelog content
@@ -80,7 +76,7 @@ jobs:
 
       - name: Create Release
         id: create_release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.module_info.outputs.module_version }}
           name: ${{ steps.module_info.outputs.module_name }} v${{ steps.module_info.outputs.module_version }}
@@ -98,26 +94,30 @@ jobs:
           REPO_NAME=${{ steps.module_info.outputs.repo_name }}
           BRANCH_NAME=${{ steps.module_info.outputs.branch_name }}
           ZIP_NAME=${{ steps.build.outputs.zip_name }}
-          
+
           # 更新 version 文件
-          echo "##最新模块版本信息" > version
-          echo "name=v${MODULE_VERSION}($(date +%Y.%m.%d))" >> version
+          echo "##update info" > version
+          echo "name=v${MODULE_VERSION}" >> version
           echo "version=${MODULE_VERSIONCODE}" >> version
-          
-          # 更新 update.json
-          CHANGELOG_URL="https://gitee.com/lucky__cat/magisk-modules/raw/freeze_logd_switch/changelog"
+
+          # 更新 update.json（GitHub 分支始终使用 GitHub 链接）
+          CHANGELOG_URL="https://raw.githubusercontent.com/lucky-cry/magisk-modules/freeze_logd_switch/changelog"
           cat > update.json << EOF
           {
             "version": "${MODULE_VERSION}",
             "versionCode": ${MODULE_VERSIONCODE},
-            "zipUrl": "https://gitee.com/lucky__cat/magisk-modules/releases/download/v${MODULE_VERSION}/${ZIP_NAME}",
+            "zipUrl": "https://github.com/lucky-cry/magisk-modules/releases/download/v${MODULE_VERSION}/${ZIP_NAME}",
             "changelog": "${CHANGELOG_URL}"
           }
           EOF
-          
-          # 提交更改
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
-          git add update.json Source/module.prop version changelog
-          git commit -m "Update module to v${MODULE_VERSION} (${MODULE_VERSIONCODE})"
-          git push origin ${BRANCH_NAME}
+
+          # 提交更改（无变更时跳过, 避免同一版本重复构建时报错）
+          if git diff --quiet update.json version changelog; then
+            echo "No changes to commit"
+          else
+            git config --global user.name "GitHub Actions"
+            git config --global user.email "actions@github.com"
+            git add update.json version changelog
+            git commit -m "Update module to v${MODULE_VERSION} (${MODULE_VERSIONCODE})"
+            git push origin ${BRANCH_NAME}
+          fi
