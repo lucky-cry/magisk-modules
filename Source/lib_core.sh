@@ -20,6 +20,7 @@ LOG_DIR="/storage/emulated/0/Android/Freeze_logd"
 LOG_FILE="$LOG_DIR/log.md"
 PID_FILE="/data/local/tmp/freeze_logd_service.pid"
 RECOVERY_LOCK="/data/local/tmp/freeze_recovery_lock"
+LOG_QUIET_FILE="/data/local/tmp/freeze_log_quiet"   # 1=静默模式(暂停每分钟详细日志)
 LOG_MAX_SIZE=524288          # 日志超过 512KB 自动轮转
 LOG_LEVEL="info"             # debug=详细日志, 其他值只记录 info/error
 
@@ -52,7 +53,12 @@ log() {
   fi
 }
 
-log_debug() { [ "$LOG_LEVEL" = "debug" ] && log "DEBUG: $*"; }
+log_debug() {
+  [ "$LOG_LEVEL" = "debug" ] && { log "DEBUG: $*"; return; }
+  # 静默模式: 连续 5 次正常后暂停每分钟日志; 出现异常会自动恢复
+  [ "$(cat "$LOG_QUIET_FILE" 2>/dev/null)" = "1" ] && return
+  log "DEBUG: $*"
+}
 log_info()  { log "INFO: $*"; }
 log_error() { log "ERROR: $*"; }
 
@@ -273,6 +279,8 @@ is_recovery_running() {
 reset_stuck_on_normal() {
   local normal=$(cat "$NORMAL_COUNT" 2>/dev/null)
   normal=$((normal + 1))
+  # 计数封顶, 保持"已连续正常"状态用于日志静默判断
+  [ "$normal" -gt "$RESET_THRESHOLD" ] && normal=$RESET_THRESHOLD
   echo "$normal" > "$NORMAL_COUNT"
 
   if [ "$normal" -ge "$RESET_THRESHOLD" ]; then
@@ -281,7 +289,6 @@ reset_stuck_on_normal() {
       log_info "连续正常 ${RESET_THRESHOLD} 次，复位卡死计数 (之前=$old_stuck)"
       echo 0 > "$STUCK_COUNT"
     fi
-    echo 0 > "$NORMAL_COUNT"
   fi
 }
 
@@ -322,11 +329,20 @@ check_once() {
   ensure_logd_frozen
 
   if is_scene_normal; then
-    # 正常: 累积复位计数
+    # 正常: 连续 RESET_THRESHOLD 次后进入静默模式, 暂停每分钟详细日志
+    local normal=$(cat "$NORMAL_COUNT" 2>/dev/null)
+    normal=${normal:-0}
+    if [ "$normal" -ge "$RESET_THRESHOLD" ]; then
+      echo 1 > "$LOG_QUIET_FILE"
+    else
+      echo 0 > "$LOG_QUIET_FILE"
+    fi
     reset_stuck_on_normal
   else
-    # 异常: 复位正常计数 + 后台执行恢复（不长时间占用 crond 槽位）
+    # 异常: 复位计数 + 恢复详细日志 + 后台执行恢复（不长时间占用 crond 槽位）
     echo 0 > "$NORMAL_COUNT"
+    echo 0 > "$LOG_QUIET_FILE"
+    log "检测到 Scene 异常, 恢复每分钟详细日志, 开始恢复流程"
     ( do_recovery ) >/dev/null 2>&1 &
   fi
 }
@@ -347,6 +363,7 @@ start_service() {
   # 初始化卡死计数
   echo 0 > "$STUCK_COUNT"
   echo 0 > "$NORMAL_COUNT"
+  echo 0 > "$LOG_QUIET_FILE"
   log "卡死计数已清零"
 
   # 获取 logd PID

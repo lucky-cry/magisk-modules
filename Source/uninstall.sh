@@ -56,7 +56,7 @@ else
 fi
 
 # 4. 清理临时文件
-rm -f "$STAMP" "$STUCK_COUNT" "$NORMAL_COUNT" "$PID_FILE" "$LEGACY_PID" "$OLD_LOG"
+rm -f "$STAMP" "$STUCK_COUNT" "$NORMAL_COUNT" "$LOG_QUIET_FILE" "$PID_FILE" "$LEGACY_PID" "$OLD_LOG"
 rm -f /data/local/tmp/freeze_action.log /data/local/tmp/freeze_install.log
 rm -rf "$RECOVERY_LOCK" 2>/dev/null
 log "临时文件已清理"
