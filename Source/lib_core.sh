@@ -94,10 +94,14 @@ check_running() {
 
 # ========== cgroup v2 / freezer 能力检测 ==========
 # 返回 0=支持, 1=不支持
+# 检测策略：
+#   1) /sys/fs/cgroup 必须是 cgroup v2 文件系统
+#   2) 功能性探测：尝试在根层级启用 freezer 控制器
+#      与 freeze_logd 的实际操作完全一致；部分 Android 设备的
+#      cgroup.controllers 不列出 freezer 但实际可用，直接探测可避免误判
 check_cgroup_support() {
   grep -qw cgroup2 /proc/filesystems 2>/dev/null || return 1
-  grep -qw freezer /sys/fs/cgroup/cgroup.controllers 2>/dev/null || return 1
-  return 0
+  echo "+freezer" > /sys/fs/cgroup/cgroup.subtree_control 2>/dev/null
 }
 
 # ========== Scene 卡死判定 ==========

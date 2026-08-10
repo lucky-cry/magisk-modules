@@ -1,6 +1,6 @@
 {
-  "version": "3.6",
-  "versionCode": 36,
-  "zipUrl": "https://github.com/lucky-cry/magisk-modules/releases/download/v3.6/freeze_logd_switch-3.6.zip",
+  "version": "3.7",
+  "versionCode": 37,
+  "zipUrl": "https://github.com/lucky-cry/magisk-modules/releases/download/v3.7/freeze_logd_switch-3.7.zip",
   "changelog": "https://raw.githubusercontent.com/lucky-cry/magisk-modules/freeze_logd_switch/changelog"
 }

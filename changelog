@@ -1,3 +1,6 @@
+v3.7
+- 【修复】cgroup v2/freezer 检测改为功能性探测(实际写入 cgroup.subtree_control), 修复部分设备 cgroup.controllers 不列出 freezer 导致误判不支持
+
 v3.6
 - 【修复】安装时 busybox 部署失败不再中止安装（降级 --install → 警告继续），模块依赖系统 toybox 即可运行
 
