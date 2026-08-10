@@ -92,19 +92,6 @@ check_running() {
   echo $$ > "${PID_FILE}"
 }
 
-# ========== cgroup v2 / freezer 能力检测（仅诊断，不阻断操作） ==========
-# 返回 0=预检通过, 1=预检未通过
-# 预检结果仅用于日志提示；实际是否可用以 freeze_logd 的写入+回读验证为准
-check_cgroup_support() {
-  # 1) 必须是 cgroup v2 文件系统
-  [ "$(stat -fc %T /sys/fs/cgroup 2>/dev/null)" = "cgroup2fs" ] || return 1
-  # 2) freezer 可用性: 根层级 controllers 列出 或 根层级已存在 cgroup.freeze
-  grep -qw freezer /sys/fs/cgroup/cgroup.controllers 2>/dev/null && return 0
-  [ -f /sys/fs/cgroup/cgroup.freeze ] && return 0
-  # 3) 功能性探测: 尝试在根层级启用 freezer 控制器
-  echo "+freezer" > /sys/fs/cgroup/cgroup.subtree_control 2>/dev/null
-}
-
 # ========== Scene 卡死判定 ==========
 # 返回 0=正常, 1=异常
 # 主判据: scene-daemon 进程数 > 3 视为异常堆积
@@ -353,14 +340,9 @@ start_service() {
   log "cgroup路径=$CGPATH"
   log "冷却=${COOLDOWN}s | 日志级别=${LOG_LEVEL}"
 
-  # cgroup v2 / freezer 预检（仅诊断，实际以冻结验证为准）
-  if check_cgroup_support; then
-    log "cgroup v2 freezer 预检通过"
-  else
-    log "提示: cgroup v2 freezer 预检未通过, 继续尝试实际冻结"
-    log "cgroup fs类型=$(stat -fc %T /sys/fs/cgroup 2>/dev/null)"
-    log "cgroup.controllers=$(tr '\n' ' ' < /sys/fs/cgroup/cgroup.controllers 2>/dev/null)"
-  fi
+  # cgroup 环境信息（仅 LOG_LEVEL=debug 时输出, 默认不打扰日志）
+  log_debug "cgroup fs类型=$(stat -fc %T /sys/fs/cgroup 2>/dev/null)"
+  log_debug "cgroup.controllers=$(tr '\n' ' ' < /sys/fs/cgroup/cgroup.controllers 2>/dev/null)"
 
   # 初始化卡死计数
   echo 0 > "$STUCK_COUNT"
