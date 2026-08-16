@@ -67,15 +67,16 @@ jobs:
           # 构建流程可能尚未创建 Release, 最多等待 5 分钟
           current_release=""
           for i in $(seq 1 30); do
-            latest_release=$(curl -H "Authorization: token $GH_TOKEN" \
+            latest_release=$(curl -s -H "Authorization: token $GH_TOKEN" \
               "https://api.github.com/repos/${{ github.repository }}/releases")
-            current_release=$(echo "$latest_release" | jq -c '.[] | select(.assets[].name | contains("freeze_logd"))' | head -n 1)
-            [ -n "$current_release" ] && break
+            # 取第一个含 freeze_logd 资产的 release（数组写法, 避免 jq|head 的 broken pipe）
+            current_release=$(echo "$latest_release" | jq -c '[.[] | select(any(.assets[]; .name | contains("freeze_logd")))] | .[0]' 2>/dev/null || true)
+            [ -n "$current_release" ] && [ "$current_release" != "null" ] && break
             echo "Release not ready, retry $i/30..."
             sleep 10
           done
 
-          if [ -z "$current_release" ]; then
+          if [ -z "$current_release" ] || [ "$current_release" = "null" ]; then
             echo "No release found for freeze_logd_switch branch"
             exit 0
           fi
@@ -83,6 +84,8 @@ jobs:
           RELEASE_TAG=$(echo "$current_release" | jq -r '.tag_name')
           RELEASE_NAME=$(echo "$current_release" | jq -r '.name')
           RELEASE_BODY=$(echo "$current_release" | jq -r '.body')
+          RELEASE_BODY="${RELEASE_BODY:-"从 GitHub 同步的发行版 ${RELEASE_TAG}"}"
+          TARGET_COMMIT=$(git rev-parse HEAD)
 
           echo "Processing release: $RELEASE_TAG"
 
@@ -90,39 +93,69 @@ jobs:
           mkdir -p "release_assets"
           cd "release_assets"
 
-          # 获取并下载资产
           echo "$current_release" | jq -r '.assets[].browser_download_url' | while read -r url; do
-            if [ ! -z "$url" ] && echo "$url" | grep -q "freeze_logd"; then
+            if [ -n "$url" ] && echo "$url" | grep -q "freeze_logd"; then
               echo "Downloading asset: $url"
               filename=$(basename "$url")
-              curl -L -H "Authorization: token $GH_TOKEN" -o "$filename" "$url"
-              echo "Downloaded: $filename"
+              curl -sL -H "Authorization: token $GH_TOKEN" -o "$filename" "$url"
+              if [ -s "$filename" ]; then
+                echo "Downloaded: $filename"
+              else
+                echo "::warning::资产下载失败或为空: $filename"
+              fi
             fi
           done
 
-          # 创建 Gitee 发行版
-          echo "Creating Gitee release: $RELEASE_TAG"
-          RELEASE_BODY="${RELEASE_BODY:-"从 GitHub 同步的发行版 ${RELEASE_TAG}"}"
-          response=$(curl -s -X POST \
-            -H "Content-Type: application/json;charset=UTF-8" \
-            -d "{\"access_token\":\"${GITEE_TOKEN}\",\"tag_name\":\"${RELEASE_TAG}\",\"name\":\"${RELEASE_NAME}\",\"body\":\"${RELEASE_BODY}\",\"prerelease\":false,\"target_commitish\":\"$(git rev-parse HEAD)\"}" \
-            "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases")
+          cd ..
+
+          API="https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases"
+
+          # 确保 tag 已存在于 Gitee（本地可能尚未持有该 tag, 先取回再推送）
+          if ! git show-ref --verify --quiet "refs/tags/${RELEASE_TAG}"; then
+            git fetch origin "refs/tags/${RELEASE_TAG}" 2>/dev/null || true
+          fi
+          if git show-ref --verify --quiet "refs/tags/${RELEASE_TAG}"; then
+            git push gitee "refs/tags/${RELEASE_TAG}" 2>/dev/null || true
+          fi
+
+          # 幂等: tag 已有 release 则复用, 否则创建
+          release_id=$(curl -s "${API}/tags/${RELEASE_TAG}?access_token=${GITEE_TOKEN}" | jq -r '.id // empty' 2>/dev/null || true)
+          if [ -n "$release_id" ]; then
+            echo "Gitee release ${RELEASE_TAG} 已存在, 复用 id=${release_id}"
+          else
+            echo "Creating Gitee release: $RELEASE_TAG"
+            # 用 jq 构造请求体, 自动转义 body 中的引号/换行
+            payload=$(jq -n \
+              --arg access_token "$GITEE_TOKEN" \
+              --arg tag_name "$RELEASE_TAG" \
+              --arg name "$RELEASE_NAME" \
+              --arg body "$RELEASE_BODY" \
+              --arg target "$TARGET_COMMIT" \
+              '{access_token: $access_token, tag_name: $tag_name, name: $name, body: $body, prerelease: false, target_commitish: $target}')
+            response=$(curl -s -X POST -H "Content-Type: application/json;charset=UTF-8" \
+              -d "$payload" "${API}")
+            release_id=$(echo "$response" | jq -r '.id // empty' 2>/dev/null || true)
+            if [ -z "$release_id" ]; then
+              echo "::error::Gitee release 创建失败: $response"
+              exit 1
+            fi
+            echo "Gitee release created: id=${release_id}"
+          fi
 
           # 上传所有文件
+          cd "release_assets"
           for file in *; do
             if [ -f "$file" ]; then
               echo "Uploading: $file"
-              release_id=$(echo "$response" | jq -r '.id')
-              upload_response=$(curl -X POST \
+              upload_response=$(curl -s -X POST \
                 -H "Content-Type: multipart/form-data" \
                 -F "access_token=${GITEE_TOKEN}" \
                 -F "file=@${file}" \
-                "https://gitee.com/api/v5/repos/${GITEE_USER}/magisk-modules/releases/${release_id}/attach_files")
+                "${API}/${release_id}/attach_files")
               echo "Upload response: $upload_response"
               sleep 2
             fi
           done
-
           cd ..
           rm -rf "release_assets"
           echo "Completed release sync"
