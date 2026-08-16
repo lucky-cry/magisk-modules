@@ -9,6 +9,7 @@ v4.3
 - 【优化】CI 发版前检查 tag 是否已存在, 忘记升版本号时给出明确报错
 - 【优化】customize.sh busybox 探测优先已知路径, 不再全盘 find
 - 【文档】README 补全当前行为说明与目录结构
+- 【工作流】修复 Gitee release 同步: 请求体改用 jq 构造(修复 changelog 含引号/换行导致 JSON 非法), 支持 tag 已存在时幂等复用, 增加响应校验与明确报错
 
 v4.2
 - 【优化】恢复流程锁统一由 EXIT trap 释放, 消除分散的 rm 与遗漏路径
