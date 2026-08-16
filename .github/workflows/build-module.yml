@@ -32,17 +32,17 @@ jobs:
           echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
           echo "repo_name=$REPO_NAME" >> $GITHUB_OUTPUT
 
-      - name: Update changelog version
+      - name: Check release tag not exists
         run: |
-          MODULE_VERSION=v${{ steps.module_info.outputs.module_version }}
-
-          # 仅当首行不是当前版本时才插入, 避免重复构建重复插入
-          if ! head -n 1 changelog | grep -qx "$MODULE_VERSION"; then
-            tail -n +2 changelog > changelog.tmp
-            echo "$MODULE_VERSION" > changelog
-            cat changelog.tmp >> changelog
-            rm changelog.tmp
+          TAG="v${{ steps.module_info.outputs.module_version }}"
+          if git ls-remote --tags origin "refs/tags/${TAG}" | grep -q "refs/tags/${TAG}"; then
+            echo "::error::Tag ${TAG} 已存在! 若已修改代码, 请先递增 Source/module.prop 的 version/versionCode 并在 changelog 顶部新增条目"
+            exit 1
           fi
+          echo "Tag ${TAG} 可用"
+
+      - name: Generate metadata (update.json / version / changelog)
+        run: sh update_meta.sh github
 
       - name: Build module zip
         id: build
@@ -88,31 +88,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Update version and update.json
+      - name: Commit metadata changes
         run: |
           MODULE_VERSION=${{ steps.module_info.outputs.module_version }}
           MODULE_VERSIONCODE=${{ steps.module_info.outputs.module_versioncode }}
-          REPO_NAME=${{ steps.module_info.outputs.repo_name }}
           BRANCH_NAME=${{ steps.module_info.outputs.branch_name }}
-          ZIP_NAME=${{ steps.build.outputs.zip_name }}
 
-          # 更新 version 文件
-          echo "##update info" > version
-          echo "name=v${MODULE_VERSION}" >> version
-          echo "version=${MODULE_VERSIONCODE}" >> version
-
-          # 更新 update.json（GitHub 分支始终使用 GitHub 链接）
-          CHANGELOG_URL="https://raw.githubusercontent.com/lucky-cry/magisk-modules/freeze_logd_switch/changelog"
-          cat > update.json << EOF
-          {
-            "version": "${MODULE_VERSION}",
-            "versionCode": ${MODULE_VERSIONCODE},
-            "zipUrl": "https://github.com/lucky-cry/magisk-modules/releases/download/v${MODULE_VERSION}/${ZIP_NAME}",
-            "changelog": "${CHANGELOG_URL}"
-          }
-          EOF
-
-          # 提交更改（无变更时跳过, 避免同一版本重复构建时报错）
+          # 提交元数据更改（无变更时跳过, 避免同一版本重复构建时报错）
           if git diff --quiet update.json version changelog; then
             echo "No changes to commit"
           else

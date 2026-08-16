@@ -21,19 +21,42 @@ LOG_FILE="$LOG_DIR/log.md"
 PID_FILE="/data/local/tmp/freeze_logd_service.pid"
 RECOVERY_LOCK="/data/local/tmp/freeze_recovery_lock"
 LOG_QUIET_FILE="/data/local/tmp/freeze_log_quiet"   # 1=静默模式(暂停每分钟详细日志)
-LOG_MAX_SIZE=524288          # 日志超过 512KB 自动轮转
+LOG_MAX_SIZE=524288          # 日志超过 512KB 自动轮转(旧日志保留 .old)
 LOG_LEVEL="info"             # debug=详细日志, 其他值只记录 info/error
+MAX_DAEMON_COUNT=3            # scene-daemon 进程数超过该值判定异常堆积
+DAEMON_WAIT_RETRIES=12        # 恢复流程中等待守护进程出现的轮询次数
+STARTUP_WAIT_RETRIES=24       # 启动流程等待守护进程的轮询次数
+POLL_INTERVAL=5               # 进程/挂载轮询间隔(秒)
+UNFREEZE_SETTLE=2             # 解冻后等待 logd 恢复调度(秒)
+RESTART_SETTLE=3              # 重启脚本执行后的缓冲等待(秒)
+CROND_CHECK_RETRIES=3         # crond 启动检测重试次数
+CROND_CHECK_INTERVAL=1        # crond 启动检测重试间隔(秒)
+LOGIN_TIMEOUT=300             # 等待解锁/存储挂载的超时上限(秒)
 
 # 若安装阶段部署了模块 busybox，则优先使用（customize.sh 会创建该目录）
 [ -d "$MODDIR/busybox" ] && export PATH="$MODDIR/busybox:$PATH"
 
 # ========== 等待用户解锁设备 ==========
 Wait_until_login() {
+  local waited=0
+
   while [ "$(getprop sys.boot_completed)" != "1" ]; do
-    sleep 5
+    waited=$((waited + POLL_INTERVAL))
+    if [ "$waited" -ge "$LOGIN_TIMEOUT" ]; then
+      log_warn "等待 sys.boot_completed 超时, 降级继续"
+      return
+    fi
+    sleep "$POLL_INTERVAL"
   done
+
+  waited=0
   until [ -d /sdcard/Android ]; do
-    sleep 5
+    waited=$((waited + POLL_INTERVAL))
+    if [ "$waited" -ge "$LOGIN_TIMEOUT" ]; then
+      log_warn "等待 /sdcard 挂载超时, 降级继续"
+      return
+    fi
+    sleep "$POLL_INTERVAL"
   done
 }
 
@@ -46,10 +69,13 @@ log_clear() {
 log() {
   mkdir -p "$LOG_DIR" 2>/dev/null
   echo "[$(date '+%y/%m/%d %H:%M:%S')] | $*" >> "$LOG_FILE" 2>/dev/null
-  # 大小轮转（stat 只读元数据，开销极小）
+  # 大小轮转: 超限后旧日志保留一份 .old 再开新文件, 避免历史日志全部丢失
   local size=$(stat -c %s "$LOG_FILE" 2>/dev/null)
   if [ -n "$size" ] && [ "$size" -gt "$LOG_MAX_SIZE" ]; then
-    log_clear "日志超限已轮转"
+    mv -f "$LOG_FILE" "$LOG_FILE.old" 2>/dev/null
+    # mv 失败(文件仍在)则跳过标记, 避免反复重试
+    [ -f "$LOG_FILE" ] && return 0
+    log "日志超限已轮转, 旧日志保留于 $LOG_FILE.old"
   fi
 }
 
@@ -60,6 +86,7 @@ log_debug() {
   log "DEBUG: $*"
 }
 log_info()  { log "INFO: $*"; }
+log_warn()  { log "WARN: $*"; }
 log_error() { log "ERROR: $*"; }
 
 # ========== 进程检测 ==========
@@ -84,13 +111,17 @@ get_logd_pid() {
 # ========== PID 文件（防重复启动） ==========
 check_running() {
   if [ -f "${PID_FILE}" ]; then
-    local old_pid
+    local old_pid cmdline
     read -r old_pid < "${PID_FILE}" 2>/dev/null
     if [ -n "${old_pid}" ] && [ -d "/proc/${old_pid}" ]; then
-      if grep -qF "service.sh" "/proc/${old_pid}/cmdline" 2>/dev/null; then
-        log_info "service.sh 已在运行 (PID: ${old_pid})，退出"
-        exit 0
-      fi
+      # 同时校验 cmdline 含 service.sh 与本模块目录, 防止 PID 复用/其他模块误判
+      cmdline=$(tr '\0' ' ' < "/proc/${old_pid}/cmdline" 2>/dev/null)
+      case "$cmdline" in
+        *"service.sh"*"$MODDIR"*|*"$MODDIR"*"service.sh"*)
+          log_info "service.sh 已在运行 (PID: ${old_pid})，退出"
+          exit 0
+          ;;
+      esac
     fi
     rm -f "${PID_FILE}" 2>/dev/null
     log_debug "过期 PID 文件已删除"
@@ -100,7 +131,7 @@ check_running() {
 
 # ========== Scene 卡死判定 ==========
 # 返回 0=正常, 1=异常
-# 主判据: scene-daemon 进程数 > 3 视为异常堆积
+# 主判据: scene-daemon 进程数超过 MAX_DAEMON_COUNT 视为异常堆积
 # 日志行数是历史信息，无法反映进程当前是否存活，仅作调试参考
 is_scene_normal() {
   # 未安装 → 正常
@@ -109,7 +140,7 @@ is_scene_normal() {
   local pid_count=$(pidof "$DAEMON_NAME" 2>/dev/null | wc -w)
   pid_count=${pid_count:-0}
 
-  if [ "$pid_count" -gt 3 ]; then
+  if [ "$pid_count" -gt "$MAX_DAEMON_COUNT" ]; then
     log_debug "Scene 异常: 进程数=$pid_count"
     return 1
   fi
@@ -123,28 +154,45 @@ is_frozen() {
   [ -f "$FREEZEFILE" ] && [ "$(cat "$FREEZEFILE")" = "1" ]
 }
 
+# 解冻原语: 仅操作 cgroup（写回 0 → 移回根 cgroup → 删除子目录）
+# 供 unfreeze_logd / freeze_logd 失败回滚 / uninstall 复用, 幂等可重复调用
+unfreeze_cgroup() {
+  [ -f "$FREEZEFILE" ] && echo 0 > "$FREEZEFILE" 2>/dev/null
+  local pid="${1:-$(get_logd_pid)}"
+  [ -n "$pid" ] && echo "$pid" > /sys/fs/cgroup/cgroup.procs 2>/dev/null
+  rmdir "$CGPATH" 2>/dev/null
+}
+
 freeze_logd() {
   local pid="$1"
+  local state
   mkdir -p "$CGPATH" 2>/dev/null
   echo "+freezer" > /sys/fs/cgroup/cgroup.subtree_control 2>/dev/null
-  echo "$pid" > "$CGPATH/cgroup.procs" 2>/dev/null || { log_error "写入 cgroup.procs 失败"; return 1; }
-  echo 1 > "$FREEZEFILE" 2>/dev/null || { log_error "写入 cgroup.freeze 失败"; return 1; }
-  # 回读验证冻结是否真正生效
-  if [ "$(cat "$FREEZEFILE" 2>/dev/null)" != "1" ]; then
-    log_error "freeze_logd: 冻结未生效 (cgroup.freeze=$(cat "$FREEZEFILE" 2>/dev/null))"
+  if ! echo "$pid" > "$CGPATH/cgroup.procs" 2>/dev/null; then
+    log_error "写入 cgroup.procs 失败"
+    unfreeze_cgroup "$pid"
+    return 1
+  fi
+  if ! echo 1 > "$FREEZEFILE" 2>/dev/null; then
+    log_error "写入 cgroup.freeze 失败"
+    unfreeze_cgroup "$pid"
+    return 1
+  fi
+  # 回读验证冻结是否真正生效（只读一次复用）
+  state=$(cat "$FREEZEFILE" 2>/dev/null)
+  if [ "$state" != "1" ]; then
+    log_error "freeze_logd: 冻结未生效 (cgroup.freeze=$state)"
+    unfreeze_cgroup "$pid"
     return 1
   fi
   sed -i "s/^description=.*/description=logd 已冻结（循环监控） | 点击按钮解冻/" "$MODDIR/module.prop" 2>/dev/null
-  log "freeze_logd: PID=$pid 已冻结, cgroup.freeze=$(cat "$FREEZEFILE" 2>/dev/null), module.prop 已同步"
+  log_info "freeze_logd: PID=$pid 已冻结, cgroup.freeze=$state, module.prop 已同步"
 }
 
 unfreeze_logd() {
-  [ -f "$FREEZEFILE" ] && echo 0 > "$FREEZEFILE" 2>/dev/null
-  local pid=$(get_logd_pid)
-  [ -n "$pid" ] && echo "$pid" > /sys/fs/cgroup/cgroup.procs 2>/dev/null
-  rmdir "$CGPATH" 2>/dev/null
+  unfreeze_cgroup
   sed -i "s/^description=.*/description=logd 已解冻 | 点击按钮冻结/" "$MODDIR/module.prop" 2>/dev/null
-  log "unfreeze_logd: logd 已解冻, cgroup子目录已清理, module.prop 已同步"
+  log_info "unfreeze_logd: logd 已解冻, cgroup子目录已清理, module.prop 已同步"
 }
 
 # ========== 冻结完整性校验 ==========
@@ -178,12 +226,23 @@ restart_scene_daemon() {
   sh "$scene_restart" >/dev/null 2>&1
   local rc=$?
   log_info "重启脚本退出码=$rc"
-  sleep 3
+  sleep "$RESTART_SETTLE"
+  return "$rc"
+}
+
+# ========== 计数/时间戳读取（防御空文件与脏数据） ==========
+# tmpfs 可能被用户/系统清理, 空文件或脏内容会导致算术展开报错
+read_count() {
+  local val=$(cat "$1" 2>/dev/null)
+  case "$val" in
+    ''|*[!0-9]*) echo 0 ;;
+    *) echo "$val" ;;
+  esac
 }
 
 # ========== 恢复流程（渐进式冻结延迟） ==========
 do_recovery() {
-  log "===== 开始 Scene 异常恢复 ====="
+  log_info "===== 开始 Scene 异常恢复 ====="
 
   # 互斥锁: 防止并发多个实例并行执行
   # 锁目录存在即锁定, 内含 pid 文件用于僵尸锁检测
@@ -194,30 +253,34 @@ do_recovery() {
       return
     else
       # 僵尸锁: pid 缺失或进程已退出, 清理并接管
-      log "检测到僵尸锁 (PID=${holder_pid:-无}), 清理并接管"
+      log_warn "检测到僵尸锁 (PID=${holder_pid:-无}), 清理并接管"
       rm -rf "$RECOVERY_LOCK" 2>/dev/null
-      mkdir "$RECOVERY_LOCK" 2>/dev/null || { log "恢复跳过: 无法获取锁"; return; }
+      mkdir "$RECOVERY_LOCK" 2>/dev/null || { log_warn "恢复跳过: 无法获取锁"; return; }
     fi
   fi
   echo "$$" > "$RECOVERY_LOCK/pid"
   # 写后验证: 防止并发实例刚删掉本锁目录并接管
   if [ "$(cat "$RECOVERY_LOCK/pid" 2>/dev/null)" != "$$" ]; then
-    log "锁竞争: 已被其他实例接管, 本次跳过"
+    log_warn "锁竞争: 已被其他实例接管, 本次跳过"
     return
   fi
 
+  # 获得锁后统一由 EXIT trap 释放, 消除分散的 rm 与遗漏路径
+  # (kill -9 等无法执行 trap 的情况, 由僵尸锁检测兜底)
+  trap 'rm -rf "$RECOVERY_LOCK" 2>/dev/null' EXIT
+
   # 冷却检查
   if [ -f "$STAMP" ]; then
-    local elapsed=$(($(date +%s) - $(cat "$STAMP")))
-    if [ $elapsed -lt $COOLDOWN ]; then
-      log "恢复跳过: 冷却中 (${elapsed}s < ${COOLDOWN}s)"
-      rm -rf "$RECOVERY_LOCK" 2>/dev/null
+    local stamp=$(read_count "$STAMP")
+    local elapsed=$(($(date +%s) - stamp))
+    if [ "$elapsed" -lt "$COOLDOWN" ]; then
+      log_info "恢复跳过: 冷却中 (${elapsed}s < ${COOLDOWN}s)"
       return
     fi
   fi
 
   # 累加卡死次数
-  local stuck=$(cat "$STUCK_COUNT" 2>/dev/null)
+  local stuck=$(read_count "$STUCK_COUNT")
   stuck=$((stuck + 1))
   echo "$stuck" > "$STUCK_COUNT"
 
@@ -225,47 +288,48 @@ do_recovery() {
   local delay_min=$stuck
   [ $delay_min -gt $MAX_FREEZE_DELAY ] && delay_min=$MAX_FREEZE_DELAY
   local delay_sec=$((delay_min * 60))
-  log "第 ${stuck} 次卡死，冻结延迟 = ${delay_min} 分钟 (${delay_sec}s)"
+  log_warn "第 ${stuck} 次卡死，冻结延迟 = ${delay_min} 分钟 (${delay_sec}s)"
 
   # 步骤1: 解冻 logd
   if is_frozen; then
     unfreeze_logd
-    sleep 2
+    sleep "$UNFREEZE_SETTLE"
   else
-    log "logd 已解冻，跳过解冻步骤"
+    log_info "logd 已解冻，跳过解冻步骤"
   fi
 
-  # 步骤2: 重启 Scene
-  restart_scene_daemon
+  # 步骤2: 重启 Scene (失败提前退出, 避免空等 60 秒)
+  if ! restart_scene_daemon; then
+    log_error "===== 恢复失败: 重启脚本不可用 ====="
+    return
+  fi
 
   # 步骤3: 等待守护进程出现
-  for i in $(seq 1 12); do
+  for i in $(seq 1 $DAEMON_WAIT_RETRIES); do
     check_daemon_process && break
-    sleep 5
+    sleep "$POLL_INTERVAL"
   done
 
   if ! check_daemon_process; then
-    log "===== 恢复失败: 守护进程未出现 ====="
-    rm -rf "$RECOVERY_LOCK" 2>/dev/null
+    log_error "===== 恢复失败: 守护进程未出现 ====="
     return
   fi
-  log "守护进程已恢复"
+  log_info "守护进程已恢复"
 
   # 步骤4: 渐进等待
-  log "等待 ${delay_min} 分钟后冻结 logd..."
+  log_info "等待 ${delay_min} 分钟后冻结 logd..."
   sleep "$delay_sec"
 
   # 步骤5: 冻结 logd
   local logd_pid=$(get_logd_pid)
   if [ -n "$logd_pid" ]; then
     freeze_logd "$logd_pid"
-    log "===== 恢复完成 (延迟${delay_min}分钟) ====="
+    log_info "===== 恢复完成 (延迟${delay_min}分钟) ====="
   else
-    log "===== 恢复完成但 logd 未找到 ====="
+    log_warn "===== 恢复完成但 logd 未找到 ====="
   fi
 
   date +%s > "$STAMP"
-  rm -rf "$RECOVERY_LOCK" 2>/dev/null
 }
 
 # ========== 恢复是否进行中 ==========
@@ -277,15 +341,15 @@ is_recovery_running() {
 
 # ========== 卡死计数复位 ==========
 reset_stuck_on_normal() {
-  local normal=$(cat "$NORMAL_COUNT" 2>/dev/null)
+  local normal=$(read_count "$NORMAL_COUNT")
   normal=$((normal + 1))
   # 计数封顶, 保持"已连续正常"状态用于日志静默判断
   [ "$normal" -gt "$RESET_THRESHOLD" ] && normal=$RESET_THRESHOLD
   echo "$normal" > "$NORMAL_COUNT"
 
   if [ "$normal" -ge "$RESET_THRESHOLD" ]; then
-    local old_stuck=$(cat "$STUCK_COUNT" 2>/dev/null)
-    if [ -n "$old_stuck" ] && [ "$old_stuck" -gt 0 ]; then
+    local old_stuck=$(read_count "$STUCK_COUNT")
+    if [ "$old_stuck" -gt 0 ]; then
       log_info "连续正常 ${RESET_THRESHOLD} 次，复位卡死计数 (之前=$old_stuck)"
       echo 0 > "$STUCK_COUNT"
     fi
@@ -317,6 +381,23 @@ find_crond() {
   return 1
 }
 
+# ========== 检查本模块 crond 实例 ==========
+# crond 通常单实例: 其他 crond 已运行时本模块实例可能启动失败,
+# 此时 pidof crond 仍为真, 必须按本模块 cron.d 目录匹配进程 cmdline
+is_crond_running() {
+  local pid_dir comm line
+  for pid_dir in /proc/[0-9]*; do
+    [ -r "$pid_dir/cmdline" ] || continue
+    comm=$(cat "$pid_dir/comm" 2>/dev/null)
+    [ "$comm" = "crond" ] || continue
+    line=$(tr '\0' ' ' < "$pid_dir/cmdline" 2>/dev/null)
+    case "$line" in
+      *"$MODDIR/cron.d"*) return 0 ;;
+    esac
+  done
+  return 1
+}
+
 # ========== 单次检查（由 crond 定时调用） ==========
 check_once() {
   # 恢复进行中则跳过本轮, 避免计数器竞争与日志噪音
@@ -330,8 +411,7 @@ check_once() {
 
   if is_scene_normal; then
     # 正常: 连续 RESET_THRESHOLD 次后进入静默模式, 暂停每分钟详细日志
-    local normal=$(cat "$NORMAL_COUNT" 2>/dev/null)
-    normal=${normal:-0}
+    local normal=$(read_count "$NORMAL_COUNT")
     if [ "$normal" -ge "$RESET_THRESHOLD" ]; then
       echo 1 > "$LOG_QUIET_FILE"
     else
@@ -342,7 +422,7 @@ check_once() {
     # 异常: 复位计数 + 恢复详细日志 + 后台执行恢复（不长时间占用 crond 槽位）
     echo 0 > "$NORMAL_COUNT"
     echo 0 > "$LOG_QUIET_FILE"
-    log "检测到 Scene 异常, 恢复每分钟详细日志, 开始恢复流程"
+    log_warn "检测到 Scene 异常, 恢复每分钟详细日志, 开始恢复流程"
     ( do_recovery ) >/dev/null 2>&1 &
   fi
 }
@@ -352,9 +432,9 @@ start_service() {
   Wait_until_login
   check_running
   log_clear "service.sh 启动 (PID=$$)"
-  log "MODDIR=$MODDIR"
-  log "cgroup路径=$CGPATH"
-  log "冷却=${COOLDOWN}s | 日志级别=${LOG_LEVEL}"
+  log_info "MODDIR=$MODDIR"
+  log_info "cgroup路径=$CGPATH"
+  log_info "冷却=${COOLDOWN}s | 日志级别=${LOG_LEVEL}"
 
   # cgroup 环境信息（仅 LOG_LEVEL=debug 时输出, 默认不打扰日志）
   log_debug "cgroup fs类型=$(stat -fc %T /sys/fs/cgroup 2>/dev/null)"
@@ -364,48 +444,48 @@ start_service() {
   echo 0 > "$STUCK_COUNT"
   echo 0 > "$NORMAL_COUNT"
   echo 0 > "$LOG_QUIET_FILE"
-  log "卡死计数已清零"
+  log_info "卡死计数已清零"
 
   # 获取 logd PID
   LOGD_PID=$(get_logd_pid)
-  log "logd PID=$LOGD_PID"
-  [ -z "$LOGD_PID" ] && { log "错误: logd 未运行, 退出"; exit 0; }
+  log_info "logd PID=$LOGD_PID"
+  [ -z "$LOGD_PID" ] && { log_error "logd 未运行, 退出"; exit 0; }
 
   # 等待 Scene 守护进程
   if [ -d "/data/data/$SCENE_PKG" ]; then
-    log "Scene 已安装，等待 $DAEMON_NAME..."
-    for i in $(seq 1 24); do
+    log_info "Scene 已安装，等待 $DAEMON_NAME..."
+    for i in $(seq 1 $STARTUP_WAIT_RETRIES); do
       check_daemon_process && break
-      sleep 5
+      sleep "$POLL_INTERVAL"
     done
     if check_daemon_process; then
-      log "Scene 守护进程已就绪"
+      log_info "Scene 守护进程已就绪"
     else
-      log "警告: Scene 守护进程等待超时"
+      log_warn "Scene 守护进程等待超时"
     fi
-    sleep 5
+    sleep "$POLL_INTERVAL"
   else
-    log "Scene 未安装，跳过守护进程等待"
+    log_info "Scene 未安装，跳过守护进程等待"
   fi
 
   # 创建 cgroup v2 并冻结 logd
-  log "===== cgroup v2 设置 ====="
+  log_info "===== cgroup v2 设置 ====="
   freeze_logd "$LOGD_PID"
 
   # ========== 启动 crond 定时任务 ==========
-  log "===== 启动 crond 定时任务 ====="
+  log_info "===== 启动 crond 定时任务 ====="
 
   CROND_BIN=$(find_crond)
 
   # 首次执行检查（crond 不可用或正常启动后都会执行一次）
   run_first_check() {
-    log "===== 首次执行检查 ====="
+    log_info "===== 首次执行检查 ====="
     sh "$MODDIR/cron_check.sh" &
-    log "首次检查已启动 (PID=$!)"
+    log_info "首次检查已启动 (PID=$!)"
   }
 
   if [ -z "$CROND_BIN" ]; then
-    log "错误: 找不到 crond 二进制文件，跳过 crond 启动"
+    log_error "找不到 crond 二进制文件，跳过 crond 启动"
     run_first_check
     return
   fi
@@ -420,19 +500,28 @@ start_service() {
   chmod 755 "$MODDIR/cron_check.sh" 2>/dev/null
 
   # 显示 cron.d/root 内容
-  log "cron.d/root 内容: $(cat "$MODDIR/cron.d/root" 2>/dev/null)"
+  log_info "cron.d/root 内容: $(cat "$MODDIR/cron.d/root" 2>/dev/null)"
 
   # 启动 crond
   "$CROND_BIN" -c "$MODDIR/cron.d" &
   CROND_PID=$!
-  sleep 1
-  log "crond 已启动 (PID=$CROND_PID)"
+  sleep "$CROND_CHECK_INTERVAL"
+  log_info "crond 已启动 (PID=$CROND_PID)"
 
-  # 检查 crond 是否运行 (pidof 比 pgrep 可靠)
-  if pidof crond >/dev/null; then
-    log "crond 运行正常"
+  # 检查本模块 crond 实例是否运行
+  # 注意: 不能只凭 pidof crond(其他 crond 实例也会命中), 必须匹配本模块 cron.d 目录
+  local crond_ok=0
+  for i in $(seq 1 $CROND_CHECK_RETRIES); do
+    if is_crond_running; then
+      crond_ok=1
+      break
+    fi
+    sleep "$CROND_CHECK_INTERVAL"
+  done
+  if [ "$crond_ok" = "1" ]; then
+    log_info "crond 运行正常"
   else
-    log "错误: crond 启动失败，仅依赖首次检查"
+    log_error "crond 启动失败(可能已有其他 crond 实例在运行), 仅依赖首次检查"
   fi
 
   # 首次执行检查

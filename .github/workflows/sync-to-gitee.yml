@@ -44,22 +44,11 @@ jobs:
           # 只同步 freeze_logd_switch 分支
           git checkout freeze_logd_switch
 
-          # 更新 update.json 为 Gitee 链接
-          cd Source
-          ID=$(grep 'id=' module.prop | cut -d= -f2)
-          VERSION=$(grep 'version=' module.prop | cut -d= -f2)
-          VCODE=$(grep 'versionCode=' module.prop | cut -d= -f2)
-          cd ..
+          # 生成 Gitee 版本元数据（update.json/version/changelog, 单一来源脚本）
+          sh update_meta.sh gitee
 
-          echo "{" > update.json
-          echo "  \"version\": \"$VERSION\"," >> update.json
-          echo "  \"versionCode\": \"$VCODE\"," >> update.json
-          echo "  \"zipUrl\": \"https://gitee.com/${GITEE_USER}/magisk-modules/releases/download/v${VERSION}/${ID}-${VERSION}.zip\"," >> update.json
-          echo "  \"changelog\": \"https://gitee.com/${GITEE_USER}/magisk-modules/raw/freeze_logd_switch/changelog\"" >> update.json
-          echo "}" >> update.json
-
-          # 提交 Gitee 版本的 update.json
-          git add update.json
+          # 提交 Gitee 版本元数据
+          git add update.json version changelog
           git commit -m "Update URLs to Gitee links" || true
 
           # 只推送 freeze_logd_switch 分支到 Gitee

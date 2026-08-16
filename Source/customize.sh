@@ -17,8 +17,22 @@
 MODDIR=${0%/*}                                  # 模块目录路径（Magisk 自动注入）
 busyboxdir=$MODPATH/busybox                     # busybox 符号链接安装目标目录
 magiskbusybox=/data/adb/magisk/busybox          # Magisk 自带的 busybox 二进制文件
-# 查找系统中 Magisk 提供的 busybox（排除模块目录中可能存在的副本）
-kernelbusybox=`find /data/adb/ -iname "busybox" -type f | sed '/modules/d' | head -n 1`
+# 优先探测已知路径, 避免全盘 find 拖慢安装; 找不到再兜底搜索
+# （排除模块目录中可能存在的副本）
+kernelbusybox=""
+for busybox_path in \
+  /data/adb/ksu/bin/busybox \
+  /data/adb/ap/bin/busybox \
+  /system/xbin/busybox \
+  /system/bin/busybox; do
+  if [ -f "$busybox_path" ]; then
+    kernelbusybox="$busybox_path"
+    break
+  fi
+done
+if [ -z "$kernelbusybox" ]; then
+  kernelbusybox=$(find /data/adb/ -iname "busybox" -type f 2>/dev/null | sed '/modules/d' | head -n 1)
+fi
 
 # 安装日志（安装阶段 /sdcard 可能未挂载，写入 /data/local/tmp）
 INSTALL_LOG="/data/local/tmp/freeze_install.log"

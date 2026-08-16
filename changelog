@@ -1,3 +1,27 @@
+v4.3
+- 【优化】日志轮转保留旧日志为 log.md.old, 不再直接丢弃历史
+- 【优化】freeze_logd 回读验证只读一次 cgroup.freeze, 消除重复 cat
+- 【优化】日志级别规范化: 新增 WARN 级别, 全库流程/异常日志按 INFO/WARN/ERROR 分类
+- 【优化】uninstall 日志函数改名 log_uninstall, 不再覆盖库函数 log
+- 【重构】解冻逻辑收敛为 unfreeze_cgroup 原语, unfreeze_logd/freeze 失败回滚/uninstall 共用
+- 【优化】魔法数字提取为常量: 进程数阈值/轮询次数/等待间隔/超时等集中到常量区
+- 【重构】update.json/version/changelog 版本头收敛为单一脚本 update_meta.sh, 消除 CI 与 sync.bat 三套重复维护
+- 【优化】CI 发版前检查 tag 是否已存在, 忘记升版本号时给出明确报错
+- 【优化】customize.sh busybox 探测优先已知路径, 不再全盘 find
+- 【文档】README 补全当前行为说明与目录结构
+
+v4.2
+- 【优化】恢复流程锁统一由 EXIT trap 释放, 消除分散的 rm 与遗漏路径
+- 【优化】restart_scene_daemon 失败(脚本缺失或执行失败)时恢复流程提前退出, 不再空等 60 秒
+- 【修复】计数/时间戳文件读取增加空值与脏数据防御(read_count), 防止 tmpfs 被清理后算术展开报错
+- 【优化】Wait_until_login 增加每阶段 5 分钟超时, 异常设备降级继续而非永久阻塞
+- 【修复】freeze_logd 失败路径回滚清理 cgroup 目录, 防止空目录残留
+- 【优化】check_running 同时校验 cmdline 含 service.sh 与本模块目录, 防止 PID 复用/其他模块误判
+
+v4.1
+- 【修复】crond 启动检测改为按本模块 cron.d 目录匹配进程 cmdline, 修复其他 crond 实例存在时误报"运行正常"导致定时监控静默失效
+- 【修复】action.sh 手动切换增加恢复流程互斥检查: 恢复流程进行中拒绝切换, 避免与后台恢复竞争 cgroup 状态
+
 v4.0
 - 【优化】自适应日志: 连续5次检测正常后暂停每分钟详细日志; 出现异常自动恢复详细日志, 再连续5次正常后重新静默
 

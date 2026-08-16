@@ -1,4 +1,5 @@
 @echo off
+setlocal
 cd /d "%~dp0"
 
 git config user.name "lucky-cry" >nul 2>&1
@@ -9,16 +10,20 @@ for /f "tokens=2 delims==" %%b in ('findstr /b "versionCode=" Source\module.prop
 
 echo module version: %MODVER% code: %MODCODE%
 
-echo {> update.json
-echo   "version": "%MODVER%",>> update.json
-echo   "versionCode": %MODCODE%,>> update.json
-echo   "zipUrl": "https://github.com/lucky-cry/magisk-modules/releases/download/v%MODVER%/freeze_logd_switch-%MODVER%.zip",>> update.json
-echo   "changelog": "https://raw.githubusercontent.com/lucky-cry/magisk-modules/freeze_logd_switch/changelog">> update.json
-echo }>> update.json
+REM 定位 Git for Windows 自带的 bash, 运行统一元数据生成脚本 (update_meta.sh)
+set "BASH="
+if exist "%ProgramFiles%\Git\bin\bash.exe" set "BASH=%ProgramFiles%\Git\bin\bash.exe"
+if not defined BASH if exist "%ProgramFiles%\Git\usr\bin\bash.exe" set "BASH=%ProgramFiles%\Git\usr\bin\bash.exe"
+if not defined BASH if exist "%LocalAppData%\Programs\Git\bin\bash.exe" set "BASH=%LocalAppData%\Programs\Git\bin\bash.exe"
+if defined BASH goto :havebash
+for /f "delims=" %%i in ('where bash 2^>nul') do if not defined BASH set "BASH=%%i"
+if defined BASH goto :havebash
+echo [错误] 未找到 Git for Windows 的 bash, 无法生成 update.json/version
+pause
+exit /b 1
 
-echo ##update info> version
-echo name=v%MODVER%>> version
-echo version=%MODCODE%>> version
+:havebash
+"%BASH%" update_meta.sh github || goto :error
 
 git add .
 git commit -m "v%MODVER%" >nul 2>&1 || echo (无新增提交, 继续)

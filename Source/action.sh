@@ -20,6 +20,13 @@ log_action() {
 # 写入启动标记（用 > 截断旧日志）
 echo "[$(date '+%y/%m/%d %H:%M:%S')] action 开始" > "$ACTION_LOG"
 
+# 恢复流程互斥: 恢复期间禁止手动切换, 避免与后台恢复流程竞争 cgroup 状态
+if is_recovery_running; then
+  echo "Scene 恢复流程进行中，请稍后再试"
+  log_action "跳过: Scene 恢复流程进行中"
+  exit 1
+fi
+
 # 核心操作 —— 全部在 tmpfs/cgroupfs 上，无 IO 瓶颈
 LOGD_PID=$(get_logd_pid)
 if [ -z "$LOGD_PID" ]; then
